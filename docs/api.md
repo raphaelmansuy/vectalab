@@ -1,11 +1,11 @@
-# VMagic API Reference
+# Vectalab API Reference
 
 ## High-Level API
 
 ### `vectorize_high_fidelity`
 
 ```python
-from vmagic import vectorize_high_fidelity
+from vectalab import vectorize_high_fidelity
 
 svg_path, ssim = vectorize_high_fidelity(
     input_path: str,
@@ -39,7 +39,7 @@ print(f"Achieved {ssim*100:.2f}% similarity")
 ### `render_svg_to_png`
 
 ```python
-from vmagic import render_svg_to_png
+from vectalab import render_svg_to_png
 
 png_path = render_svg_to_png(
     svg_path: str,
@@ -58,12 +58,12 @@ png_path = render_svg_to_png(
 
 ---
 
-## VMagic Class
+## Vectalab Class
 
 ```python
-from vmagic import VMagic
+from vectalab import Vectalab
 
-vm = VMagic(
+vm = Vectalab(
     model_type: str = "vit_b",
     device: str = "cpu",
     method: str = "bayesian",
@@ -104,7 +104,7 @@ Vectorize an image to SVG.
 ### `optimize_vectorization`
 
 ```python
-from vmagic import optimize_vectorization
+from vectalab import optimize_vectorization
 
 renderer = optimize_vectorization(
     image: np.ndarray,

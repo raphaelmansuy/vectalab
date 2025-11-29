@@ -1,9 +1,10 @@
-# VMagic - High-Fidelity Image Vectorization
+# Vectalab - Professional High-Fidelity Image Vectorization
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Website](https://img.shields.io/badge/website-vectalab.com-blue)](https://vectalab.com)
 
-VMagic is a high-fidelity image vectorization library that converts raster images (PNG, JPG) to scalable vector graphics (SVG) with **99.8%+ structural similarity**.
+**Vectalab** is a professional high-fidelity image vectorization library that converts raster images (PNG, JPG) to scalable vector graphics (SVG) with **99.8%+ structural similarity**.
 
 ## Features
 
@@ -32,7 +33,7 @@ pip install -r requirements.txt
 ### High-Fidelity Vectorization (Recommended)
 
 ```python
-from vmagic import vectorize_high_fidelity
+from vectalab import vectorize_high_fidelity
 
 # Convert image to SVG with 99.8%+ fidelity
 svg_path, ssim = vectorize_high_fidelity(
@@ -46,10 +47,10 @@ print(f"Achieved {ssim*100:.2f}% similarity")
 ### Basic Usage
 
 ```python
-from vmagic import VMagic
+from vectalab import Vectalab
 
 # Initialize vectorizer
-vm = VMagic(method="bayesian")
+vm = Vectalab(method="bayesian")
 
 # Vectorize image
 svg_content = vm.vectorize("input.png")
@@ -63,10 +64,10 @@ with open("output.svg", "w") as f:
 
 ```bash
 # High-fidelity mode
-python -m vmagic.hifi input.png output.svg
+vectalab input.png output.svg --hifi
 
 # Basic mode
-python -m vmagic.cli input.png output.svg --method bayesian
+vectalab input.png output.svg --method bayesian
 ```
 
 ## Methods
@@ -92,10 +93,10 @@ Best for complex images with distinct regions.
 ## Project Structure
 
 ```
-vmagic/
-├── vmagic/              # Main package
+vectalab/
+├── vectalab/            # Main package
 │   ├── __init__.py
-│   ├── core.py          # VMagic main class
+│   ├── core.py          # Vectalab main class
 │   ├── hifi.py          # High-fidelity vectorization
 │   ├── bayesian.py      # Bayesian optimization
 │   ├── segmentation.py  # SAM-based segmentation

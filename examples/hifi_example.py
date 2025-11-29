@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Example: High-fidelity vectorization with vmagic.
+Example: High-fidelity vectorization with Vectalab.
 
 This example demonstrates how to convert a raster image to SVG
 with 99.8%+ similarity (SSIM).
@@ -13,7 +13,7 @@ from pathlib import Path
 # Add parent to path for development
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from vmagic.hifi import vectorize_high_fidelity
+from vectalab.hifi import vectorize_high_fidelity
 
 
 def main():

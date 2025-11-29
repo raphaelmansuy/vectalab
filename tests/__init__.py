@@ -1,1 +1,1 @@
-# Tests package for vmagic
+# Tests package for Vectalab

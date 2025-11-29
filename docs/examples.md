@@ -3,7 +3,7 @@
 ## Basic High-Fidelity Vectorization
 
 ```python
-from vmagic import vectorize_high_fidelity
+from vectalab import vectorize_high_fidelity
 
 # Simple usage - convert logo to SVG
 svg_path, ssim = vectorize_high_fidelity("logo.png", "logo.svg")
@@ -13,7 +13,7 @@ print(f"Created {svg_path} with {ssim*100:.2f}% similarity")
 ## Batch Processing
 
 ```python
-from vmagic import vectorize_high_fidelity
+from vectalab import vectorize_high_fidelity
 from pathlib import Path
 
 input_dir = Path("images")
@@ -29,7 +29,7 @@ for img_path in input_dir.glob("*.png"):
 ## Custom Quality Settings
 
 ```python
-from vmagic import vectorize_high_fidelity
+from vectalab import vectorize_high_fidelity
 
 # Fast mode for quick previews
 svg_path, ssim = vectorize_high_fidelity(
@@ -52,7 +52,7 @@ svg_path, ssim = vectorize_high_fidelity(
 ## Render SVG Back to PNG
 
 ```python
-from vmagic import vectorize_high_fidelity, render_svg_to_png
+from vectalab import vectorize_high_fidelity, render_svg_to_png
 
 # Vectorize
 svg_path, _ = vectorize_high_fidelity("input.png", "output.svg")
@@ -61,13 +61,13 @@ svg_path, _ = vectorize_high_fidelity("input.png", "output.svg")
 render_svg_to_png(svg_path, "output_2x.png", scale=2)
 ```
 
-## Using VMagic Class Directly
+## Using Vectalab Class Directly
 
 ```python
-from vmagic import VMagic
+from vectalab import Vectalab
 
 # Initialize with Bayesian method
-vm = VMagic(method="bayesian", device="cpu")
+vm = Vectalab(method="bayesian", device="cpu")
 
 # Vectorize
 svg_content = vm.vectorize("input.png")
@@ -83,7 +83,7 @@ with open("output.svg", "w") as f:
 import cv2
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
-from vmagic import vectorize_high_fidelity, render_svg_to_png
+from vectalab import vectorize_high_fidelity, render_svg_to_png
 
 # Vectorize
 svg_path, _ = vectorize_high_fidelity("input.png", "output.svg")

@@ -1,11 +1,11 @@
 [project]
-name = "vmagic"
+name = "vectalab"
 version = "0.1.0"
-description = "High-fidelity image vectorization library"
+description = "Vectalab - Professional High-Fidelity Image Vectorization"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "VMagic Contributors"}
+    {name = "Vectalab Contributors"}
 ]
 requires-python = ">=3.10"
 classifiers = [
@@ -45,12 +45,12 @@ dev = [
 ]
 
 [project.scripts]
-vmagic = "vmagic.cli:main"
+vectalab = "vectalab.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/vmagic/vmagic"
-Documentation = "https://github.com/vmagic/vmagic#readme"
-Repository = "https://github.com/vmagic/vmagic"
+Homepage = "https://vectalab.com"
+Documentation = "https://github.com/vectalab/vectalab#readme"
+Repository = "https://github.com/vectalab/vectalab"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -58,7 +58,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["vmagic*"]
+include = ["vectalab*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for high-fidelity vectorization.
+Test suite for Vectalab high-fidelity vectorization.
 Verifies PNG -> SVG -> PNG achieves 99.8%+ SSIM.
 """
 
@@ -17,7 +17,7 @@ import cv2
 import pytest
 from skimage.metrics import structural_similarity as ssim, peak_signal_noise_ratio as psnr
 
-from vmagic.hifi import vectorize_high_fidelity, render_svg_to_png
+from vectalab.hifi import vectorize_high_fidelity, render_svg_to_png
 
 
 def get_test_image_path():
@@ -123,7 +123,7 @@ class TestHighFidelityVectorization:
 def main():
     """Run tests manually."""
     print("="*60)
-    print("VMagic High-Fidelity Vectorization Test")
+    print("Vectalab High-Fidelity Vectorization Test")
     print("="*60)
     
     test_image = get_test_image_path()

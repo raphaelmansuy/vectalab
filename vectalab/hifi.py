@@ -1,5 +1,5 @@
 """
-High-Fidelity Vectorization Module for VMagic.
+Vectalab High-Fidelity Vectorization Module.
 
 This module implements a hybrid vectorization approach that achieves 99.8%+ SSIM
 by combining traditional path-based vectorization with edge-correction micro-rectangles.
@@ -11,7 +11,7 @@ The approach:
 4. Result: 99.8%+ SSIM with a pure SVG output
 
 Usage:
-    from vmagic.hifi import vectorize_high_fidelity
+    from vectalab.hifi import vectorize_high_fidelity
     
     svg_path = vectorize_high_fidelity(
         "input.png",
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) < 3:
-        print("Usage: python -m vmagic.hifi <input_image> <output.svg>")
+        print("Usage: python -m vectalab.hifi <input_image> <output.svg>")
         sys.exit(1)
     
     input_path = sys.argv[1]

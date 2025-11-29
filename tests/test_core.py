@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for core vmagic functionality.
+Test suite for core Vectalab functionality.
 """
 
 import sys
@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytest
 import numpy as np
 
-from vmagic import core
+from vectalab import core
 
 
 @pytest.fixture

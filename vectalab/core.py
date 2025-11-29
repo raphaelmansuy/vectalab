@@ -1,3 +1,9 @@
+"""
+Vectalab Core - Professional High-Fidelity Image Vectorization
+
+This module contains the main Vectalab class for image vectorization.
+"""
+
 import os
 import cv2
 import numpy as np
@@ -6,7 +12,8 @@ from .segmentation import SAMSegmenter
 from .tracing import Tracer
 from .output import SVGWriter
 
-class VMagic:
+
+class Vectalab:
     def __init__(self, model_type="vit_h", checkpoint_path=None, device="cpu", method="sam", **kwargs):
         self.method = method
         self.device = device

@@ -1,10 +1,12 @@
-Here is the **real, production-grade pseudo-algorithm** that follows **exactly** Vector Magic’s secret sauce — the Bayesian inversion of rasterization — as described in James Diebel’s 2008 Stanford PhD thesis and still used (refined) in Vector Magic today.
+# Vectalab Algorithm: Bayesian Image Vectorization
+
+This document describes the **production-grade algorithm** used by Vectalab, based on **exactly** the same approach as Vector Magic — the Bayesian inversion of rasterization — as described in James Diebel's 2008 Stanford PhD thesis.
 
 This is **not** Potrace + k-means.  
-This is the **true probabilistic engine** that makes Vector Magic unbeatable.
+This is the **true probabilistic engine** that achieves state-of-the-art vectorization.
 
 ```
-ALGORITHM: VectorMagic-Bayesian-Inversion (2025 refined version)
+ALGORITHM: Vectalab-Bayesian-Inversion (2025 refined version)
 
 Input:  Raster image I (RGB, any size, anti-aliased)
 Output: Clean editable SVG with minimal paths

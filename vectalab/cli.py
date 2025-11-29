@@ -1,9 +1,9 @@
 import argparse
 import sys
-from vmagic.core import VMagic
+from vectalab.core import Vectalab
 
 def main():
-    parser = argparse.ArgumentParser(description="vmagic: SOTA Image Vectorizer")
+    parser = argparse.ArgumentParser(description="Vectalab: Professional SOTA Image Vectorizer")
     parser.add_argument("input", help="Path to input image")
     parser.add_argument("output", help="Path to output SVG")
     parser.add_argument("--model", default="vit_b", help="SAM model type (vit_h, vit_l, vit_b)")
@@ -21,7 +21,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        vm = VMagic(
+        vm = Vectalab(
             model_type=args.model, 
             device=args.device,
             points_per_side=args.points_per_side,
