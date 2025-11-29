@@ -9,7 +9,9 @@ import requests
 # Feather icons (monochrome)
 FEATHER_ICONS = [
     'circle', 'square', 'triangle', 'star', 'heart',
-    'user', 'home', 'search', 'settings', 'camera'
+    'user', 'home', 'search', 'settings', 'camera',
+    'cloud', 'sun', 'moon', 'wind', 'cloud-rain',
+    'coffee', 'code', 'terminal', 'cpu', 'database'
 ]
 
 # Multi-color icons from gilbarbara/logos
@@ -23,8 +25,32 @@ MULTI_COLOR_ICONS = {
     'google': 'google-icon',
     'apple': 'apple',
     'microsoft': 'microsoft-icon',
-    'amazon': 'amazon-icon'
+    'amazon': 'aws',
+    'slack': 'slack-icon',
+    'spotify': 'spotify-icon',
+    'netflix': 'netflix-icon',
+    'airbnb': 'airbnb-icon',
+    'dropbox': 'dropbox',
+    'trello': 'trello',
+    'atlassian': 'atlassian',
+    'jira': 'jira',
+    'bitbucket': 'bitbucket',
+    'gitlab': 'gitlab'
 }
+
+# Complex SVGs from W3C SVG Test Suite
+COMPLEX_SVGS = [
+    'tiger.svg',
+    'car.svg',
+    'gallardo.svg',
+    'tommek_Car.svg',
+    'compuserver_msn_Ford_Focus.svg',
+    'juanmontoya_lingerie.svg',
+    'scimitar.svg',
+    'rg1024_green_grapes.svg',
+    'rg1024_Presentation_with_girl.svg',
+    'rg1024_metal_effect.svg'
+]
 
 def download_svg(url, output_path):
     """Download SVG from URL to output path."""
@@ -48,6 +74,12 @@ def main():
     for name, filename in MULTI_COLOR_ICONS.items():
         url = f"https://raw.githubusercontent.com/gilbarbara/logos/master/logos/{filename}.svg"
         output = f"test_data/svg_multi/{name}.svg"
+        download_svg(url, output)
+
+    # Download Complex SVGs
+    for filename in COMPLEX_SVGS:
+        url = f"https://dev.w3.org/SVG/tools/svgweb/samples/svg-files/{filename}"
+        output = f"test_data/svg_complex/{filename}"
         download_svg(url, output)
 
 if __name__ == "__main__":

@@ -2,36 +2,81 @@ VECTALAB VECTORIZATION BASELINE REPORT
 ======================================================================
 
 Individual Results:
-----------------------------------------------------------------------
-mono_camera                    SSIM: 100.00%
-mono_circle                    SSIM: 100.00%
-mono_heart                     SSIM: 100.00%
-mono_home                      SSIM: 100.00%
-mono_search                    SSIM: 100.00%
-mono_settings                  SSIM: 100.00%
-mono_square                    SSIM: 100.00%
-mono_star                      SSIM: 100.00%
-mono_triangle                  SSIM: 100.00%
-mono_user                      SSIM: 100.00%
-multi_amazon                   SSIM: 100.00%
-multi_apple                    SSIM: 100.00%
-multi_facebook                 SSIM:  95.75%
-multi_github                   SSIM:  93.79%
-multi_google                   SSIM:  91.63%
-multi_instagram                SSIM:  97.75%
-multi_linkedin                 SSIM:  98.93%
-multi_microsoft                SSIM: 100.00%
-multi_twitter                  SSIM:  92.37%
-multi_youtube                  SSIM:  97.66%
+------------------------------------------------------------------------------------------
+Icon                                 SSIM       PSNR        MSE
+------------------------------------------------------------------------------------------
+mono_camera                       100.00%       infdB      0.00
+mono_circle                       100.00%       infdB      0.00
+mono_cloud-rain                   100.00%       infdB      0.00
+mono_cloud                        100.00%       infdB      0.00
+mono_code                         100.00%       infdB      0.00
+mono_coffee                       100.00%       infdB      0.00
+mono_cpu                          100.00%       infdB      0.00
+mono_database                     100.00%       infdB      0.00
+mono_heart                        100.00%       infdB      0.00
+mono_home                         100.00%       infdB      0.00
+mono_moon                         100.00%       infdB      0.00
+mono_search                       100.00%       infdB      0.00
+mono_settings                     100.00%       infdB      0.00
+mono_square                       100.00%       infdB      0.00
+mono_star                         100.00%       infdB      0.00
+mono_sun                          100.00%       infdB      0.00
+mono_terminal                     100.00%       infdB      0.00
+mono_triangle                     100.00%       infdB      0.00
+mono_user                         100.00%       infdB      0.00
+mono_wind                         100.00%       infdB      0.00
+multi_airbnb                       92.07%     21.83dB    426.71
+multi_amazon                       88.85%     22.75dB    344.91
+multi_apple                       100.00%       infdB      0.00
+multi_atlassian                    92.10%     21.18dB    495.99
+multi_bitbucket                    91.12%     21.11dB    503.53
+multi_dropbox                      92.72%     20.94dB    523.37
+multi_facebook                     95.75%     23.94dB    262.52
+multi_github                       93.79%     37.77dB     10.87
+multi_gitlab                       96.12%     29.42dB     74.33
+multi_google                       91.63%     22.97dB    328.30
+multi_instagram                    97.75%     45.30dB      1.92
+multi_jira                         91.50%     21.37dB    474.28
+multi_linkedin                     98.93%     31.68dB     44.18
+multi_microsoft                   100.00%     56.28dB      0.15
+multi_netflix                      97.35%     29.01dB     81.63
+multi_slack                        88.97%     19.96dB    656.65
+multi_spotify                      93.79%     23.66dB    279.98
+multi_trello                       98.10%     27.71dB    110.24
+multi_twitter                      92.37%     21.25dB    487.31
+multi_youtube                      97.66%     22.06dB    405.10
+complex_car                        95.63%     27.73dB    109.78
+complex_compuserver_msn_Ford_Focus     87.53%     21.36dB    475.58
+complex_gallardo                   94.77%     27.21dB    123.68
+complex_juanmontoya_lingerie       94.68%     27.40dB    118.21
+complex_rg1024_Presentation_with_girl     89.89%     22.89dB    334.49
+complex_rg1024_green_grapes        96.46%     26.82dB    135.23
+complex_rg1024_metal_effect        89.82%     23.72dB    275.86
+complex_scimitar                   93.87%     24.12dB    251.92
+complex_tiger                      95.38%     23.40dB    297.02
+complex_tommek_Car                 95.79%     26.25dB    154.03
 
 ======================================================================
 
-Monochrome Summary (10 tested):
-  Average: 100.00%
-  Min:     100.00%
-  Max:     100.00%
+Monochrome Summary (20 tested):
+  Average SSIM: 100.00%
+  Average PSNR: 100.00 dB (capped at 100)
+  Min SSIM:     100.00%
+  Max SSIM:     100.00%
 
-Multi-Color Summary (10 tested):
-  Average: 96.79%
-  Min:     91.63%
+Multi-Color Summary (20 tested):
+  Average SSIM: 94.53%
+  Average PSNR: 31.01 dB (capped at 100)
+  Min SSIM:     88.85%
+  Max SSIM:     100.00%
+
+Complex Scenes Summary (10 tested):
+  Average SSIM: 93.38%
+  Average PSNR: 25.09 dB (capped at 100)
+  Min SSIM:     87.53%
+  Max SSIM:     96.46%
+
+Multi-Color Summary (20 tested):
+  Average: 94.53%
+  Min:     88.85%
   Max:     100.00%

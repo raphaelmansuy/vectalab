@@ -42,5 +42,18 @@ def main():
             png_path = os.path.join(png_multi_dir, png_filename)
             convert_svg_to_png(svg_path, png_path)
 
+    # Convert complex SVGs
+    svg_complex_dir = "test_data/svg_complex"
+    png_complex_dir = "test_data/png_complex"
+
+    if os.path.exists(svg_complex_dir):
+        for filename in os.listdir(svg_complex_dir):
+            if filename.endswith('.svg'):
+                svg_path = os.path.join(svg_complex_dir, filename)
+                png_filename = filename.replace('.svg', '.png')
+                png_path = os.path.join(png_complex_dir, png_filename)
+                # Use larger size for complex images to preserve detail
+                convert_svg_to_png(svg_path, png_path, size=512)
+
 if __name__ == "__main__":
     main()

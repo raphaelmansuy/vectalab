@@ -51,6 +51,20 @@ def main():
             svg_filename = filename.replace('.png', '.svg')
             svg_path = os.path.join(svg_multi_dir, svg_filename)
             run_vectalab(png_path, svg_path, quality="balanced")
+
+    # Process complex PNGs with ultra quality for detail
+    print("\nProcessing complex scenes...")
+    png_complex_dir = "test_data/png_complex"
+    svg_complex_dir = "test_data/vectalab_complex"
+
+    if os.path.exists(png_complex_dir):
+        for filename in sorted(os.listdir(png_complex_dir)):
+            if filename.endswith('.png'):
+                png_path = os.path.join(png_complex_dir, filename)
+                svg_filename = filename.replace('.png', '.svg')
+                svg_path = os.path.join(svg_complex_dir, svg_filename)
+                # Use ultra quality for complex scenes
+                run_vectalab(png_path, svg_path, quality="ultra")
     
     print("\n✓ Vectorization complete!")
 

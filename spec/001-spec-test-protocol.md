@@ -30,14 +30,19 @@ This will produce: `test_data/baseline_report.txt` with SSIM metrics.
 
 ### 1. SVG Icon Selection
 - **Monochrome Library**: Feather Icons (https://feathericons.com/)
-  - 10 icons: circle, square, triangle, star, heart, user, home, search, settings, camera
+  - 20 icons: circle, square, triangle, star, heart, user, home, search, settings, camera, cloud, sun, moon, wind, rain, coffee, code, terminal, cpu, database
   - Open-source, simple, stroke-based designs
   - Ideal for testing clean vectorization
 
 - **Multi-Color Library**: Font Awesome Brands (https://fontawesome.com/icons)
-  - 10 icons: github, twitter, facebook, instagram, youtube, linkedin, google, apple, microsoft, amazon
+  - 20 icons: github, twitter, facebook, instagram, youtube, linkedin, google, apple, microsoft, amazon, slack, spotify, netflix, airbnb, dropbox, trello, atlassian, jira, bitbucket, gitlab
   - Complex color palettes and fills
   - Tests ability to handle multi-color assets
+
+- **Complex Scenes**: W3C SVG Test Suite & Samples
+  - 10 scenes: tiger, car, gallardo, tommek_Car, compuserver_msn_Ford_Focus, juanmontoya_lingerie, scimitar, rg1024_green_grapes, rg1024_Presentation_with_girl, rg1024_metal_effect
+  - High complexity, gradients, many paths, realistic illustrations
+  - Tests performance and detail preservation
 
 ### 2. Download Process
 ```bash
@@ -90,26 +95,40 @@ Analysis:
 - Computes statistics: mean, min, max, std dev
 - Generates detailed report: `test_data/baseline_report.txt`
 
-## Improvement Process
+## OODA Loop Improvement Process
 
-### 6. Baseline Establishment
-1. Run vectorization on test set
-2. Execute comparison script
-3. Review report to identify:
-   - Average SSIM for mono and multi-color
-   - Icons with lowest scores (problematic cases)
-   - Processing time patterns
+This protocol follows the OODA Loop (Observe, Orient, Decide, Act) for continuous improvement.
 
-### 7. Algorithm Refinement
-Typical workflow:
-1. Analyze failure cases (low SSIM icons)
-2. Identify common issues (e.g., stroke width, corner handling, color reduction)
-3. Implement targeted fix in core algorithm
-4. Test on problematic icons first using quick_baseline
-5. Verify no regressions on known good icons
-6. Full test suite validation
+### 6. Observe (Baseline Establishment)
+1. Run vectorization on the full test set (20 mono + 20 multi icons).
+2. Execute comparison script to generate metrics.
+3. Review `test_data/baseline_report.txt` to identify:
+   - Average SSIM, PSNR, MSE for mono and multi-color.
+   - Icons with lowest scores (problematic cases).
+   - Processing time patterns.
 
-### 8. Iterative Testing
+### 7. Orient (Analysis)
+1. Analyze failure cases (low SSIM/PSNR icons).
+2. Visually inspect the difference between original and vectorized images.
+3. Identify common issues (e.g., stroke width, corner handling, color reduction, gradient loss).
+4. Hypothesize the root cause in the algorithm (e.g., segmentation parameters, tracing thresholds).
+
+### 8. Decide (Planning)
+1. Select a specific issue to address.
+2. Formulate a plan for algorithm refinement.
+3. Decide on the scope of changes (parameter tuning vs. code refactoring).
+4. Create a hypothesis for the expected improvement.
+
+### 9. Act (Implementation & Testing)
+1. Implement the targeted fix in the core algorithm.
+2. Test on problematic icons first using `quick_baseline.py`.
+3. Verify no regressions on known good icons.
+4. Run the full test suite `run_vectalab_test.py`.
+5. Compare results with the previous baseline.
+6. Commit changes if metrics improve.
+7. Repeat the loop.
+
+### 10. Iterative Testing Commands
 ```bash
 # After each algorithm change:
 python scripts/quick_baseline.py       # Quick validation
@@ -131,11 +150,21 @@ python scripts/compare_results.py      # Check metrics
 - Formula: SSIM = (2μ₁μ₂ + c₁)(2σ₁₂ + c₂) / ((μ₁² + μ₂²+ c₁)(σ₁² + σ₂² + c₂))
 - Accounts for: luminance, contrast, structure
 
+### PSNR (Peak Signal-to-Noise Ratio)
+- Measures the ratio between the maximum possible power of a signal and the power of corrupting noise.
+- Expressed in decibels (dB). Higher is better.
+- Typical values for good quality images are between 30 and 50 dB.
+
+### MSE (Mean Squared Error)
+- Measures the average of the squares of the errors.
+- Lower is better. 0 means identical images.
+
 ### Success Criteria
 - **Monochrome**: Average SSIM ≥ 99.8%
 - **Multi-Color**: Average SSIM ≥ 99.5% (more challenging)
-- **Worst Case**: No icon should drop below 95%
-- **Processing**: < 30 seconds per icon
+- **Complex Scenes**: Average SSIM ≥ 90.0% (very challenging)
+- **Worst Case**: No icon should drop below 95% (80% for complex)
+- **Processing**: < 30 seconds per icon (< 120s for complex)
 
 ## Files and Scripts
 
