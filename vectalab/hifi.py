@@ -1,14 +1,14 @@
 """
 Vectalab High-Fidelity Vectorization Module.
 
-This module implements a hybrid vectorization approach that achieves 99.8%+ SSIM
-by combining traditional path-based vectorization with edge-correction micro-rectangles.
+This module implements a high-fidelity vectorization approach that creates
+lightweight, Figma-compatible SVG files while maintaining visual quality.
 
 The approach:
-1. Use vtracer for base vectorization (achieves ~99.4% SSIM)
-2. Identify high-error pixels (typically at antialiased edges)
-3. Add micro-rectangle corrections for those pixels
-4. Result: 99.8%+ SSIM with a pure SVG output
+1. Use vtracer with optimized presets for base vectorization
+2. Apply path simplification and shape primitive detection
+3. Optimize the SVG with scour for minimal file size
+4. Result: Clean, editable SVG files suitable for design tools
 
 Usage:
     from vectalab.hifi import vectorize_high_fidelity
@@ -16,7 +16,7 @@ Usage:
     svg_path = vectorize_high_fidelity(
         "input.png",
         "output.svg",
-        target_ssim=0.998
+        preset="figma"  # or "balanced", "quality"
     )
 """
 
@@ -26,8 +26,18 @@ from PIL import Image
 import io
 import os
 import xml.etree.ElementTree as ET
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 from pathlib import Path
+
+# Import optimizer module
+from .optimize import (
+    SVGOptimizer, 
+    create_figma_optimizer, 
+    create_quality_optimizer,
+    get_vtracer_preset,
+    VTRACER_PRESETS,
+    optimize_svg_string,
+)
 
 # Try to import optional dependencies
 try:
@@ -49,14 +59,14 @@ except ImportError:
     SKIMAGE_AVAILABLE = False
 
 
-def check_dependencies():
+def check_dependencies(require_metrics: bool = False):
     """Check that required dependencies are available."""
     missing = []
     if not VTRACER_AVAILABLE:
         missing.append("vtracer")
     if not CAIROSVG_AVAILABLE:
         missing.append("cairosvg")
-    if not SKIMAGE_AVAILABLE:
+    if require_metrics and not SKIMAGE_AVAILABLE:
         missing.append("scikit-image")
     
     if missing:
@@ -92,180 +102,99 @@ def render_svg(svg_path: str, width: int, height: int, scale: int = 1) -> np.nda
     return rendered
 
 
+def render_svg_string(svg_content: str, width: int, height: int) -> np.ndarray:
+    """
+    Render SVG content string to RGB numpy array.
+    
+    Args:
+        svg_content: SVG content as string
+        width: Target width
+        height: Target height
+        
+    Returns:
+        RGB numpy array [H, W, 3]
+    """
+    png_data = cairosvg.svg2png(
+        bytestring=svg_content.encode('utf-8'),
+        output_width=width,
+        output_height=height
+    )
+    return np.array(Image.open(io.BytesIO(png_data)).convert('RGB'))
+
+
 def create_base_vectorization(
     image_path: str,
     svg_path: str,
-    quality: str = "ultra"
+    preset: str = "balanced"
 ) -> None:
     """
-    Create base vectorization using vtracer.
+    Create base vectorization using vtracer with optimized presets.
     
     Args:
         image_path: Path to input image
         svg_path: Path for output SVG
-        quality: Quality preset ("fast", "balanced", "ultra")
+        preset: Preset name ('figma', 'balanced', 'quality', 'ultra')
     """
-    presets = {
-        "fast": {
-            'colormode': 'color',
-            'hierarchical': 'stacked',
-            'mode': 'spline',
-            'filter_speckle': 4,
-            'color_precision': 6,
-            'layer_difference': 16,
-        },
-        "balanced": {
-            'colormode': 'color',
-            'hierarchical': 'stacked',
-            'mode': 'spline',
-            'filter_speckle': 2,
-            'color_precision': 8,
-            'layer_difference': 4,
-            'path_precision': 8,
-        },
-        "ultra": {
-            'colormode': 'color',
-            'hierarchical': 'stacked',
-            'mode': 'polygon',
-            'filter_speckle': 0,
-            'color_precision': 8,
-            'layer_difference': 1,
-            'corner_threshold': 10,
-            'length_threshold': 3.5,
-            'max_iterations': 30,
-            'path_precision': 8,
-        },
-    }
-    
-    settings = presets.get(quality, presets["ultra"])
+    settings = get_vtracer_preset(preset)
     vtracer.convert_image_to_svg_py(image_path, svg_path, **settings)
 
 
-def find_high_error_pixels(
-    original: np.ndarray,
-    rendered: np.ndarray,
-    threshold: float = 3.0
-) -> np.ndarray:
+def get_svg_stats(svg_path: str) -> Dict[str, Any]:
     """
-    Find pixels with error above threshold.
+    Get statistics about an SVG file.
     
     Args:
-        original: Original RGB image
-        rendered: Rendered RGB image
-        threshold: Error threshold (0-255 scale)
+        svg_path: Path to SVG file
         
     Returns:
-        Boolean mask of high-error pixels
+        Dictionary with file stats
     """
-    diff = np.abs(original.astype(np.float32) - rendered.astype(np.float32))
-    error = np.mean(diff, axis=2)
-    return error > threshold
-
-
-def add_pixel_corrections(
-    original: np.ndarray,
-    base_svg_path: str,
-    output_svg_path: str,
-    error_mask: np.ndarray,
-    max_corrections: int = 50000
-) -> int:
-    """
-    Add micro-rectangle corrections to SVG for high-error pixels.
+    with open(svg_path, 'r', encoding='utf-8') as f:
+        content = f.read()
     
-    Args:
-        original: Original RGB image
-        base_svg_path: Path to base SVG
-        output_svg_path: Path for corrected SVG
-        error_mask: Boolean mask of pixels to correct
-        max_corrections: Maximum number of correction rectangles
-        
-    Returns:
-        Number of corrections added
-    """
-    # Get coordinates of high-error pixels
-    coords = np.argwhere(error_mask)
-    
-    if len(coords) == 0:
-        # No corrections needed, just copy
-        import shutil
-        shutil.copy(base_svg_path, output_svg_path)
-        return 0
-    
-    # Sample if too many
-    if len(coords) > max_corrections:
-        indices = np.random.choice(len(coords), max_corrections, replace=False)
-        coords = coords[indices]
-    
-    # Parse base SVG
-    tree = ET.parse(base_svg_path)
-    root = tree.getroot()
-    
-    # Handle namespace
-    ns_uri = None
-    if root.tag.startswith('{'):
-        ns_uri = root.tag.split('}')[0][1:]
-        ET.register_namespace('', ns_uri)
-    
-    # Create correction group
-    if ns_uri:
-        g = ET.SubElement(root, f'{{{ns_uri}}}g')
-    else:
-        g = ET.SubElement(root, 'g')
-    g.set('id', 'hifi-corrections')
-    
-    # Add rectangles
-    for y, x in coords:
-        r, g_val, b = original[y, x]
-        
-        if ns_uri:
-            rect = ET.SubElement(g, f'{{{ns_uri}}}rect')
-        else:
-            rect = ET.SubElement(g, 'rect')
-        
-        rect.set('x', str(x))
-        rect.set('y', str(y))
-        rect.set('width', '1')
-        rect.set('height', '1')
-        rect.set('fill', f'rgb({r},{g_val},{b})')
-    
-    # Write output
-    tree.write(output_svg_path, encoding='unicode', xml_declaration=True)
-    
-    return len(coords)
+    return {
+        'file_size': len(content.encode('utf-8')),
+        'path_count': content.count('<path'),
+        'element_count': content.count('<'),
+    }
 
 
 def vectorize_high_fidelity(
     input_path: str,
     output_path: str,
-    target_ssim: float = 0.998,
-    quality: str = "ultra",
-    max_iterations: int = 5,
+    preset: str = "balanced",
+    optimize: bool = True,
     verbose: bool = True
-) -> Tuple[str, float]:
+) -> Tuple[str, Dict[str, Any]]:
     """
-    Vectorize an image to SVG with high fidelity (99.8%+ SSIM).
+    Vectorize an image to a clean, lightweight SVG suitable for design tools.
     
-    This function creates a pure SVG that, when rendered back to PNG,
-    achieves the target SSIM similarity with the original image.
+    This function creates an optimized SVG that is:
+    - Lightweight (minimal file size)
+    - Editable (clean structure for Figma, Illustrator, etc.)
+    - Visually accurate (good quality reproduction)
     
     Args:
         input_path: Path to input image (PNG, JPG, etc.)
         output_path: Path for output SVG
-        target_ssim: Target SSIM value (default 0.998 = 99.8%)
-        quality: Base vectorization quality ("fast", "balanced", "ultra")
-        max_iterations: Maximum refinement iterations
+        preset: Vectorization preset:
+            - 'figma': Smallest file size, best for Figma/design tools
+            - 'balanced': Good balance of size and quality
+            - 'quality': Higher fidelity, larger files
+            - 'ultra': Maximum quality (not recommended for large images)
+        optimize: Apply post-processing optimization
         verbose: Print progress messages
         
     Returns:
-        Tuple of (output_path, achieved_ssim)
+        Tuple of (output_path, stats_dict)
         
     Example:
-        >>> svg_path, ssim_val = vectorize_high_fidelity("logo.png", "logo.svg")
-        >>> print(f"Achieved {ssim_val*100:.2f}% similarity")
+        >>> svg_path, stats = vectorize_high_fidelity("logo.png", "logo.svg")
+        >>> print(f"Output: {stats['file_size']} bytes, {stats['path_count']} paths")
     """
-    check_dependencies()
+    check_dependencies(require_metrics=False)
     
-    # Load original image
+    # Load original image to get dimensions
     original = cv2.imread(input_path)
     if original is None:
         raise ValueError(f"Could not load image: {input_path}")
@@ -275,86 +204,171 @@ def vectorize_high_fidelity(
     
     if verbose:
         print(f"Input: {input_path} ({w}x{h})")
+        print(f"Preset: {preset}")
     
     # Create base vectorization
-    base_svg = output_path.replace('.svg', '_base.svg')
-    create_base_vectorization(input_path, base_svg, quality)
+    temp_svg = output_path.replace('.svg', '_temp.svg')
+    create_base_vectorization(input_path, temp_svg, preset)
     
     if verbose:
-        print(f"Base vectorization created")
+        base_stats = get_svg_stats(temp_svg)
+        print(f"Base vectorization: {base_stats['file_size']:,} bytes, {base_stats['path_count']} paths")
     
-    # Render and check SSIM
-    rendered = render_svg(base_svg, w, h, scale=4)
-    current_ssim = ssim(original_rgb, rendered, channel_axis=2, data_range=255)
-    
-    if verbose:
-        print(f"Base SSIM: {current_ssim:.4f} ({current_ssim*100:.2f}%)")
-    
-    if current_ssim >= target_ssim:
-        # Already achieved target
-        import shutil
-        shutil.move(base_svg, output_path)
+    # Optimize if requested
+    if optimize:
         if verbose:
-            print(f"Target achieved with base vectorization!")
-        return output_path, current_ssim
-    
-    # Iteratively add corrections
-    best_svg = base_svg
-    best_ssim = current_ssim
-    
-    thresholds = [10, 5, 3, 2, 1]
-    
-    for i, threshold in enumerate(thresholds[:max_iterations]):
-        if best_ssim >= target_ssim:
-            break
+            print("Optimizing SVG...")
         
-        # Find high-error pixels
-        error_mask = find_high_error_pixels(original_rgb, rendered, threshold)
-        num_errors = np.sum(error_mask)
-        
-        if num_errors == 0:
-            continue
-        
-        # Create corrected SVG
-        corrected_svg = output_path.replace('.svg', f'_t{threshold}.svg')
-        num_corrections = add_pixel_corrections(
-            original_rgb, base_svg, corrected_svg, error_mask
-        )
-        
-        # Render and check
-        corrected_rendered = render_svg(corrected_svg, w, h)
-        corrected_ssim = ssim(original_rgb, corrected_rendered, channel_axis=2, data_range=255)
-        
-        if verbose:
-            print(f"Threshold {threshold}: SSIM={corrected_ssim:.4f}, corrections={num_corrections}")
-        
-        if corrected_ssim > best_ssim:
-            best_ssim = corrected_ssim
-            best_svg = corrected_svg
-            rendered = corrected_rendered
-    
-    # Move best result to output path
-    if best_svg != output_path:
-        import shutil
-        shutil.move(best_svg, output_path)
-    
-    # Clean up intermediate files
-    for f in [base_svg] + [output_path.replace('.svg', f'_t{t}.svg') for t in thresholds]:
-        if os.path.exists(f) and f != output_path:
-            try:
-                os.remove(f)
-            except:
-                pass
-    
-    if verbose:
-        if best_ssim >= target_ssim:
-            print(f"✅ Target achieved! Final SSIM: {best_ssim:.4f} ({best_ssim*100:.2f}%)")
+        # Choose optimizer based on preset
+        if preset == 'figma':
+            optimizer = create_figma_optimizer()
         else:
-            print(f"⚠️ Best SSIM: {best_ssim:.4f} ({best_ssim*100:.2f}%), target was {target_ssim*100:.1f}%")
+            optimizer = create_quality_optimizer()
+        
+        # Read and optimize
+        with open(temp_svg, 'r', encoding='utf-8') as f:
+            svg_content = f.read()
+        
+        optimized_content = optimizer.optimize_string(svg_content)
+        
+        # Write optimized output
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(optimized_content)
+        
+        # Clean up temp file
+        try:
+            os.remove(temp_svg)
+        except:
+            pass
+        
+        stats = optimizer.get_stats(svg_content, optimized_content)
+        
+        if verbose:
+            print(f"Optimized: {stats['optimized_size']:,} bytes ({stats['reduction_percent']:.1f}% reduction)")
+            print(f"Paths: {stats['original_paths']} → {stats['optimized_paths']}")
+    else:
+        # Just rename temp to output
+        import shutil
+        shutil.move(temp_svg, output_path)
+        
+        stats = get_svg_stats(output_path)
+        stats['reduction_percent'] = 0
     
-    return output_path, best_ssim
+    if verbose:
+        print(f"✅ Output: {output_path}")
+    
+    return output_path, stats
 
 
+def vectorize_for_figma(
+    input_path: str,
+    output_path: str,
+    verbose: bool = True
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Convenience function for Figma-optimized vectorization.
+    
+    Creates the smallest possible SVG that looks good in Figma.
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        verbose: Print progress messages
+        
+    Returns:
+        Tuple of (output_path, stats_dict)
+    """
+    return vectorize_high_fidelity(
+        input_path, 
+        output_path, 
+        preset='figma',
+        optimize=True,
+        verbose=verbose
+    )
+
+
+def vectorize_with_quality(
+    input_path: str,
+    output_path: str,
+    verbose: bool = True
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    Convenience function for quality-focused vectorization.
+    
+    Creates higher fidelity SVG at the cost of larger file size.
+    
+    Args:
+        input_path: Path to input image
+        output_path: Path for output SVG
+        verbose: Print progress messages
+        
+    Returns:
+        Tuple of (output_path, stats_dict)
+    """
+    return vectorize_high_fidelity(
+        input_path, 
+        output_path, 
+        preset='quality',
+        optimize=True,
+        verbose=verbose
+    )
+
+
+def compute_quality_metrics(
+    input_path: str,
+    svg_path: str,
+    verbose: bool = False
+) -> Dict[str, float]:
+    """
+    Compute quality metrics between original image and SVG.
+    
+    Args:
+        input_path: Path to original image
+        svg_path: Path to SVG file
+        verbose: Print metrics
+        
+    Returns:
+        Dictionary with quality metrics (SSIM, PSNR, etc.)
+    """
+    check_dependencies(require_metrics=True)
+    
+    # Load original
+    original = cv2.imread(input_path)
+    if original is None:
+        raise ValueError(f"Could not load image: {input_path}")
+    original_rgb = cv2.cvtColor(original, cv2.COLOR_BGR2RGB)
+    h, w = original_rgb.shape[:2]
+    
+    # Render SVG
+    rendered = render_svg(svg_path, w, h, scale=2)
+    
+    # Compute SSIM
+    ssim_value = ssim(original_rgb, rendered, channel_axis=2, data_range=255)
+    
+    # Compute PSNR
+    mse = np.mean((original_rgb.astype(float) - rendered.astype(float)) ** 2)
+    if mse > 0:
+        psnr = 10 * np.log10(255 ** 2 / mse)
+    else:
+        psnr = float('inf')
+    
+    # Compute mean absolute error
+    mae = np.mean(np.abs(original_rgb.astype(float) - rendered.astype(float)))
+    
+    metrics = {
+        'ssim': ssim_value,
+        'psnr': psnr,
+        'mae': mae,
+        'similarity_percent': ssim_value * 100,
+    }
+    
+    if verbose:
+        print(f"Quality Metrics:")
+        print(f"  SSIM: {ssim_value:.4f} ({ssim_value*100:.2f}%)")
+        print(f"  PSNR: {psnr:.2f} dB")
+        print(f"  MAE: {mae:.2f}")
+    
+    return metrics
 def render_svg_to_png(svg_path: str, png_path: str, scale: int = 1) -> str:
     """
     Render SVG to PNG file.
@@ -367,14 +381,25 @@ def render_svg_to_png(svg_path: str, png_path: str, scale: int = 1) -> str:
     Returns:
         Path to output PNG
     """
-    check_dependencies()
+    check_dependencies(require_metrics=False)
     
     # Get SVG dimensions
     tree = ET.parse(svg_path)
     root = tree.getroot()
     
-    width = int(root.get('width', 100))
-    height = int(root.get('height', 100))
+    # Try to get dimensions from viewBox or width/height
+    viewbox = root.get('viewBox')
+    if viewbox:
+        parts = viewbox.split()
+        if len(parts) >= 4:
+            width = int(float(parts[2]))
+            height = int(float(parts[3]))
+        else:
+            width = int(float(root.get('width', 100)))
+            height = int(float(root.get('height', 100)))
+    else:
+        width = int(float(root.get('width', 100)))
+        height = int(float(root.get('height', 100)))
     
     png_data = cairosvg.svg2png(
         url=svg_path,
@@ -390,17 +415,62 @@ def render_svg_to_png(svg_path: str, png_path: str, scale: int = 1) -> str:
     return png_path
 
 
+def list_presets() -> Dict[str, str]:
+    """
+    List available vectorization presets.
+    
+    Returns:
+        Dictionary of preset names and descriptions
+    """
+    return {
+        'figma': 'Smallest file size, best for Figma and design tools',
+        'balanced': 'Good balance of file size and visual quality',
+        'quality': 'Higher fidelity, larger files',
+        'ultra': 'Maximum quality, may produce large files',
+    }
+
+
 # Command-line interface
 if __name__ == "__main__":
     import sys
+    import argparse
     
-    if len(sys.argv) < 3:
-        print("Usage: python -m vectalab.hifi <input_image> <output.svg>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Vectorize images to clean, optimized SVG files'
+    )
+    parser.add_argument('input', help='Input image path')
+    parser.add_argument('output', help='Output SVG path')
+    parser.add_argument(
+        '-p', '--preset',
+        choices=['figma', 'balanced', 'quality', 'ultra'],
+        default='balanced',
+        help='Vectorization preset (default: balanced)'
+    )
+    parser.add_argument(
+        '--no-optimize',
+        action='store_true',
+        help='Skip post-processing optimization'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
+        action='store_true',
+        help='Suppress output messages'
+    )
+    parser.add_argument(
+        '--metrics',
+        action='store_true',
+        help='Compute and display quality metrics'
+    )
     
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
+    args = parser.parse_args()
     
-    svg_path, achieved_ssim = vectorize_high_fidelity(input_path, output_path)
-    print(f"Output: {svg_path}")
-    print(f"SSIM: {achieved_ssim:.4f} ({achieved_ssim*100:.2f}%)")
+    svg_path, stats = vectorize_high_fidelity(
+        args.input,
+        args.output,
+        preset=args.preset,
+        optimize=not args.no_optimize,
+        verbose=not args.quiet
+    )
+    
+    if args.metrics:
+        metrics = compute_quality_metrics(args.input, svg_path, verbose=True)

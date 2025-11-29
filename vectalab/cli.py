@@ -43,8 +43,9 @@ class Method(str, Enum):
 
 class Quality(str, Enum):
     """Quality preset for vectorization."""
-    fast = "fast"
+    figma = "figma"
     balanced = "balanced"
+    quality = "quality"
     ultra = "ultra"
 
 
@@ -294,8 +295,11 @@ def _run_hifi_conversion(
     verbose: bool,
     quiet: bool,
 ):
-    """Run high-fidelity vectorization."""
+    """Run high-fidelity vectorization with optimization."""
     from vectalab.hifi import vectorize_high_fidelity
+    
+    # Map quality enum to preset name
+    preset = quality.value
     
     if not quiet:
         with Progress(
@@ -308,24 +312,24 @@ def _run_hifi_conversion(
         ) as progress:
             task = progress.add_task("[cyan]Vectorizing...", total=None)
             
-            svg_path, achieved_ssim = vectorize_high_fidelity(
+            svg_path, stats = vectorize_high_fidelity(
                 str(input_path),
                 str(output_path),
-                target_ssim=target_ssim,
-                quality=quality.value,
+                preset=preset,
+                optimize=True,
                 verbose=verbose,
             )
             
             progress.update(task, completed=100, total=100)
         
         # Show results
-        _show_results(output_path, achieved_ssim, target_ssim)
+        _show_optimized_results(output_path, stats, preset)
     else:
-        svg_path, achieved_ssim = vectorize_high_fidelity(
+        svg_path, stats = vectorize_high_fidelity(
             str(input_path),
             str(output_path),
-            target_ssim=target_ssim,
-            quality=quality.value,
+            preset=preset,
+            optimize=True,
             verbose=False,
         )
 
@@ -398,6 +402,47 @@ def _show_results(output_path: Path, achieved_ssim: float, target_ssim: float):
     else:
         title = "⚠️ Conversion Complete (below target)"
         border_style = "yellow"
+    
+    console.print()
+    console.print(Panel(result_table, title=title, border_style=border_style))
+
+
+def _show_optimized_results(output_path: Path, stats: dict, preset: str):
+    """Display optimized conversion results in a nice panel."""
+    # Get file size
+    size_bytes = output_path.stat().st_size
+    if size_bytes < 1024:
+        size_str = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
+    
+    # Create results table
+    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+    result_table.add_column("Metric", style="bold")
+    result_table.add_column("Value")
+    
+    result_table.add_row("Preset", preset.upper())
+    result_table.add_row("File Size", size_str)
+    
+    # Show optimization stats if available
+    if 'reduction_percent' in stats:
+        reduction = stats['reduction_percent']
+        if reduction > 0:
+            result_table.add_row("Size Reduction", f"[green]{reduction:.1f}%[/]")
+    
+    if 'original_paths' in stats and 'optimized_paths' in stats:
+        result_table.add_row(
+            "Paths", 
+            f"{stats['original_paths']} → {stats['optimized_paths']} "
+            f"([green]-{stats['original_paths'] - stats['optimized_paths']}[/])"
+        )
+    
+    result_table.add_row("Output", str(output_path))
+    
+    title = "✨ Optimized SVG Created"
+    border_style = "green"
     
     console.print()
     console.print(Panel(result_table, title=title, border_style=border_style))
