@@ -62,13 +62,54 @@ with open("output.svg", "w") as f:
 
 ### Command Line
 
-```bash
-# High-fidelity mode
-vectalab input.png output.svg --hifi
+Vectalab provides a beautiful, user-friendly command-line interface with rich help and progress indicators.
 
-# Basic mode
-vectalab input.png output.svg --method bayesian
+```bash
+# Show help
+vectalab --help
+
+# Convert an image to SVG (auto-detects best settings)
+vectalab convert logo.png
+
+# Specify output path
+vectalab convert photo.jpg output.svg
+
+# Fast conversion for previews
+vectalab convert image.png -q fast
+
+# Maximum quality with custom target SSIM
+vectalab convert icon.png -m hifi -t 0.999
+
+# Get image information and recommendations
+vectalab info image.png
+
+# Compare original and rendered images
+vectalab compare original.png rendered.png
+
+# Render SVG back to PNG for verification
+vectalab render output.svg output.png
 ```
+
+#### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `convert` | 🎨 Convert an image to high-fidelity SVG |
+| `info` | 📊 Display image information and recommendations |
+| `compare` | 📏 Compare two images with similarity metrics |
+| `render` | 🖼️ Render SVG to PNG for verification |
+
+#### Convert Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--method` | `-m` | Vectorization method: `hifi`, `bayesian`, `sam` |
+| `--quality` | `-q` | Quality preset: `fast`, `balanced`, `ultra` |
+| `--target` | `-t` | Target SSIM (0.0-1.0, default: 0.998) |
+| `--device` | `-d` | Compute device: `auto`, `cpu`, `cuda`, `mps` |
+| `--verbose` | `-v` | Show detailed progress |
+| `--quiet` | | Suppress output |
+| `--force` | `-f` | Overwrite existing output |
 
 ## Methods
 
