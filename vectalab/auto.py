@@ -47,7 +47,8 @@ def determine_auto_mode(
         # 1. Check for Monochrome Icon first (Geometric shapes)
         is_mono, m_color = is_monochrome_icon(input_path)
         if is_mono:
-            return "geometric_icon", "ultra", m_color
+            # Use logo mode which now handles monochrome icons with binary tracing
+            return "logo", "ultra", m_color
             
         # 2. Analyze image content
         img = cv2.imread(str(input_path))

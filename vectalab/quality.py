@@ -1053,63 +1053,113 @@ def vectorize_logo_clean(
         
     h, w = image_rgb.shape[:2]
     
-    # Analyze image (use RGB for analysis to keep it simple, or update analyze_image)
-    # For now, just use RGB part for analysis if RGBA
-    analysis_img = image_rgb[:,:,:3] if image_rgb.shape[2] == 4 else image_rgb
-    analysis = analyze_image(analysis_img)
+    # Check for Monochrome with Alpha (e.g. icons)
+    is_monochrome_alpha = False
+    mono_color = None
     
-    if verbose:
-        print(f"Input: {input_path} ({w}x{h}) Channels: {image_rgb.shape[2]}")
-        print(f"Original colors: {analysis['unique_colors']:,}")
-        print(f"Top 10 colors cover: {analysis['top_10_coverage']*100:.1f}%")
-        print(f"Detected as logo: {'Yes' if analysis['is_logo'] else 'No'}")
-    
-    # Determine palette size
-    if n_colors is None:
-        n_colors = get_optimal_palette_size(analysis)
+    if image_rgb.shape[2] == 4:
+        # Check if RGB channels are constant where alpha > 0
+        rgb = image_rgb[:,:,:3]
+        alpha = image_rgb[:,:,3]
         
-        # Boost palette size for high quality presets if image is complex
-        if n_colors >= 32:
-            if quality_preset == "ultra":
-                n_colors = 64
-            elif quality_preset == "high":
-                n_colors = 48
-    
-    if verbose:
-        print(f"Using palette: {n_colors} colors (K-means clustering)")
-    
-    # Reduce to palette (handles RGBA now)
-    reduced = reduce_to_palette(image_rgb, n_colors)
-    
-    if verbose:
-        actual_colors = len(np.unique(reduced.reshape(-1, reduced.shape[2]), axis=0))
-        print(f"Reduced to: {actual_colors} colors")
-    
-    # Save reduced image
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-        tmp_path = tmp.name
-        # Convert back to BGR/BGRA for saving
-        if reduced.shape[2] == 4:
-            save_img = cv2.cvtColor(reduced, cv2.COLOR_RGBA2BGRA)
-        else:
-            save_img = cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(tmp_path, save_img)
-    
-    # Settings optimized for palette-reduced images
-    if quality_preset not in LOGO_PRESETS:
-        print(f"Warning: Unknown preset '{quality_preset}', using 'balanced'")
-        quality_preset = "balanced"
+        mask = alpha > 10
+        if np.sum(mask) > 0:
+            pixels = rgb[mask]
+            # Check variance
+            std_dev = np.std(pixels, axis=0)
+            # Relaxed threshold to match icon.py (was 5.0 mean, icon.py uses 30.0 max)
+            # Using 20.0 max to be safe but inclusive
+            if np.max(std_dev) < 20.0: 
+                is_monochrome_alpha = True
+                mono_color = np.mean(pixels, axis=0).astype(int)
+                if verbose:
+                    print(f"Detected Monochrome Icon with Alpha. Color: {mono_color}")
+
+    if is_monochrome_alpha:
+        # Special handling for monochrome alpha
+        # Create binary image: Shape=Black, Background=White
+        binary = np.ones((h, w), dtype=np.uint8) * 255
+        binary[image_rgb[:,:,3] > 10] = 0
         
-    settings = LOGO_PRESETS[quality_preset]
-    
-    if verbose:
-        print(f"Using quality preset: {quality_preset}")
+        # Save binary
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+            cv2.imwrite(tmp_path, binary)
+            
+        if quality_preset not in LOGO_PRESETS:
+            quality_preset = "balanced"
+        settings = LOGO_PRESETS[quality_preset].copy()
+        settings['colormode'] = 'binary'
+        
+        reduced = image_rgb # No reduction really
+        n_colors = 1
+        analysis = {'is_logo': True} # Fake analysis
+        
+    else:
+        # Analyze image (use RGB for analysis to keep it simple, or update analyze_image)
+        # For now, just use RGB part for analysis if RGBA
+        analysis_img = image_rgb[:,:,:3] if image_rgb.shape[2] == 4 else image_rgb
+        analysis = analyze_image(analysis_img)
+        
+        if verbose:
+            print(f"Input: {input_path} ({w}x{h}) Channels: {image_rgb.shape[2]}")
+            print(f"Original colors: {analysis['unique_colors']:,}")
+            print(f"Top 10 colors cover: {analysis['top_10_coverage']*100:.1f}%")
+            print(f"Detected as logo: {'Yes' if analysis['is_logo'] else 'No'}")
+        
+        # Determine palette size
+        if n_colors is None:
+            n_colors = get_optimal_palette_size(analysis)
+            
+            # Boost palette size for high quality presets if image is complex
+            if n_colors >= 32:
+                if quality_preset == "ultra":
+                    n_colors = 64
+                elif quality_preset == "high":
+                    n_colors = 48
+        
+        if verbose:
+            print(f"Using palette: {n_colors} colors (K-means clustering)")
+        
+        # Reduce to palette (handles RGBA now)
+        reduced = reduce_to_palette(image_rgb, n_colors)
+        
+        if verbose:
+            actual_colors = len(np.unique(reduced.reshape(-1, reduced.shape[2]), axis=0))
+            print(f"Reduced to: {actual_colors} colors")
+        
+        # Save reduced image
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+            # Convert back to BGR/BGRA for saving
+            if reduced.shape[2] == 4:
+                save_img = cv2.cvtColor(reduced, cv2.COLOR_RGBA2BGRA)
+            else:
+                save_img = cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(tmp_path, save_img)
+        
+        # Settings optimized for palette-reduced images
+        if quality_preset not in LOGO_PRESETS:
+            print(f"Warning: Unknown preset '{quality_preset}', using 'balanced'")
+            quality_preset = "balanced"
+            
+        settings = LOGO_PRESETS[quality_preset]
+        
+        if verbose:
+            print(f"Using quality preset: {quality_preset}")
     
     try:
         vtracer.convert_image_to_svg_py(tmp_path, output_path, **settings)
         
         with open(output_path, 'r') as f:
             svg_content = f.read()
+            
+        # Fix color for monochrome alpha
+        if is_monochrome_alpha and mono_color is not None:
+            hex_color = "#{:02x}{:02x}{:02x}".format(*mono_color)
+            svg_content = svg_content.replace('fill="#000000"', f'fill="{hex_color}"')
+            with open(output_path, 'w') as f:
+                f.write(svg_content)
         
         # Compute metrics against original
         # Render SVG to array (RGB) - cairosvg handles transparency by default (white bg?)
