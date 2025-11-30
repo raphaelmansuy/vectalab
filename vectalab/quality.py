@@ -470,7 +470,7 @@ def analyze_image(image_rgb: np.ndarray) -> Dict[str, Any]:
     }
 
 
-def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
+def reduce_to_palette(image: np.ndarray, n_colors: int = 16) -> np.ndarray:
     """
     Reduce image to fixed color palette using K-means clustering.
     
@@ -478,14 +478,15 @@ def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
     than Median Cut for logos and graphics.
     
     Args:
-        image_rgb: RGB image
+        image: RGB or RGBA image
         n_colors: Target number of colors (8, 16, 32, etc.)
         
     Returns:
         Image with reduced color palette
     """
     # Reshape to list of pixels
-    pixels = image_rgb.reshape((-1, 3))
+    channels = image.shape[2]
+    pixels = image.reshape((-1, channels))
     pixels = np.float32(pixels)
 
     # Define criteria = ( type, max_iter, epsilon )
@@ -510,12 +511,12 @@ def reduce_to_palette(image_rgb: np.ndarray, n_colors: int = 16) -> np.ndarray:
         res = centers[labels.flatten()]
         
         # Reshape back to original image
-        return res.reshape(image_rgb.shape)
+        return res.reshape(image.shape)
         
     except Exception as e:
         # Fallback to PIL if KMeans fails (e.g. memory issues)
         print(f"Warning: KMeans failed ({e}), falling back to PIL MedianCut")
-        pil_img = Image.fromarray(image_rgb)
+        pil_img = Image.fromarray(image)
         # Ensure no dithering for logos!
         quantized = pil_img.quantize(
             colors=n_colors, 
@@ -915,19 +916,30 @@ def vectorize_logo_clean(
     if not VTRACER_AVAILABLE:
         raise ImportError("vtracer required")
     
-    # Load image
-    image = cv2.imread(input_path)
+    # Load image with alpha if present
+    image = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
     if image is None:
         raise ValueError(f"Could not load image: {input_path}")
     
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # Handle channels
+    if len(image.shape) == 2:  # Grayscale
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    elif image.shape[2] == 3:  # BGR
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    elif image.shape[2] == 4:  # BGRA
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+    else:
+        image_rgb = image
+        
     h, w = image_rgb.shape[:2]
     
-    # Analyze image
-    analysis = analyze_image(image_rgb)
+    # Analyze image (use RGB for analysis to keep it simple, or update analyze_image)
+    # For now, just use RGB part for analysis if RGBA
+    analysis_img = image_rgb[:,:,:3] if image_rgb.shape[2] == 4 else image_rgb
+    analysis = analyze_image(analysis_img)
     
     if verbose:
-        print(f"Input: {input_path} ({w}x{h})")
+        print(f"Input: {input_path} ({w}x{h}) Channels: {image_rgb.shape[2]}")
         print(f"Original colors: {analysis['unique_colors']:,}")
         print(f"Top 10 colors cover: {analysis['top_10_coverage']*100:.1f}%")
         print(f"Detected as logo: {'Yes' if analysis['is_logo'] else 'No'}")
@@ -946,17 +958,22 @@ def vectorize_logo_clean(
     if verbose:
         print(f"Using palette: {n_colors} colors (K-means clustering)")
     
-    # Reduce to palette
+    # Reduce to palette (handles RGBA now)
     reduced = reduce_to_palette(image_rgb, n_colors)
     
     if verbose:
-        actual_colors = len(np.unique(reduced.reshape(-1, 3), axis=0))
+        actual_colors = len(np.unique(reduced.reshape(-1, reduced.shape[2]), axis=0))
         print(f"Reduced to: {actual_colors} colors")
     
     # Save reduced image
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
         tmp_path = tmp.name
-        cv2.imwrite(tmp_path, cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR))
+        # Convert back to BGR/BGRA for saving
+        if reduced.shape[2] == 4:
+            save_img = cv2.cvtColor(reduced, cv2.COLOR_RGBA2BGRA)
+        else:
+            save_img = cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(tmp_path, save_img)
     
     # Settings optimized for palette-reduced images
     if quality_preset not in LOGO_PRESETS:
@@ -975,11 +992,40 @@ def vectorize_logo_clean(
             svg_content = f.read()
         
         # Compute metrics against original
+        # Render SVG to array (RGB) - cairosvg handles transparency by default (white bg?)
+        # We need to be careful with comparison.
+        # If original has alpha, and rendered has alpha?
+        # render_svg_to_array returns RGB (from PIL convert('RGB')).
+        # So it flattens alpha to black/white.
+        
+        # For metrics, we should probably compare RGB versions.
+        # If we loaded RGBA, let's convert to RGB for metrics to match render_svg_to_array
+        if image_rgb.shape[2] == 4:
+             # Composite over white for fair comparison if render_svg_to_array does that?
+             # Actually render_svg_to_array uses PIL convert('RGB') which puts on black background usually?
+             # Let's check render_svg_to_array implementation.
+             pass
+
         rendered = render_svg_to_array(svg_content, w, h)
-        metrics = compute_pixel_metrics(image_rgb, rendered)
+        
+        # Convert original to RGB for comparison
+        if image_rgb.shape[2] == 4:
+             # Simple drop alpha for now, or composite?
+             # PIL convert('RGB') drops alpha (black background).
+             # So we should do same to original to match.
+             pil_img = Image.fromarray(image_rgb)
+             image_rgb_comp = np.array(pil_img.convert('RGB'))
+             
+             pil_reduced = Image.fromarray(reduced)
+             reduced_comp = np.array(pil_reduced.convert('RGB'))
+        else:
+             image_rgb_comp = image_rgb
+             reduced_comp = reduced
+
+        metrics = compute_pixel_metrics(image_rgb_comp, rendered)
         
         # Also compute vs reduced image
-        metrics_vs_reduced = compute_pixel_metrics(reduced, rendered)
+        metrics_vs_reduced = compute_pixel_metrics(reduced_comp, rendered)
         
         # Analyze SVG complexity
         svg_analysis = analyze_svg_content(svg_content)
