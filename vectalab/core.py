@@ -37,10 +37,18 @@ class Vectalab:
         print(f"Processing {image_path}...")
         
         # 1. Load Image
-        image = cv2.imread(image_path)
+        image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if image is None:
             raise ValueError(f"Could not load image: {image_path}")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+        alpha_mask = None
+        if image.ndim == 3 and image.shape[2] == 4:
+            alpha_mask = image[:, :, 3]
+            image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+        elif image.ndim == 3 and image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        else:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
         
         # Upsample for better fidelity (4x)
         orig_h, orig_w = image.shape[:2]
@@ -53,6 +61,35 @@ class Vectalab:
         print("Running segmentation...")
         masks = self.segmenter.segment(image)
         print(f"Found {len(masks)} segments.")
+        
+        # Filter masks based on alpha transparency
+        if alpha_mask is not None:
+            print("Filtering segments based on transparency...")
+            # Resize alpha mask to match upsampled image
+            alpha_mask_resized = cv2.resize(alpha_mask, new_size, interpolation=cv2.INTER_NEAREST)
+            
+            valid_masks = []
+            for m in masks:
+                # m['segmentation'] is boolean mask of the object
+                object_mask = m['segmentation']
+                object_area = np.sum(object_mask)
+                
+                if object_area == 0:
+                    continue
+                
+                # Pixels that are in the object AND are transparent (alpha < 10)
+                # We use a low threshold to be safe
+                transparent_pixels = np.logical_and(object_mask, alpha_mask_resized < 10)
+                transparent_area = np.sum(transparent_pixels)
+                
+                # If object is more than 50% transparent, skip it
+                if transparent_area / object_area > 0.5:
+                    continue
+                    
+                valid_masks.append(m)
+            
+            print(f"Filtered {len(masks) - len(valid_masks)} transparent segments.")
+            masks = valid_masks
 
         # 3. Trace Segments (Always run this first)
         print("Tracing paths...")

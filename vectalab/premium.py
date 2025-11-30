@@ -494,12 +494,22 @@ def vectorize_premium(
     if not VTRACER_AVAILABLE:
         raise ImportError("vtracer required")
     
-    # Load image
-    image = cv2.imread(input_path)
+    # Load image with transparency support
+    image = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
     if image is None:
         raise ValueError(f"Could not load image: {input_path}")
     
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # Handle alpha channel
+    alpha_channel = None
+    if image.ndim == 3 and image.shape[2] == 4:
+        alpha_channel = image[:, :, 3]
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+    elif image.ndim == 3 and image.shape[2] == 3:
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    else:
+        # Grayscale
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        
     h, w = image_rgb.shape[:2]
     
     if verbose:
@@ -588,7 +598,13 @@ def vectorize_premium(
     # Save reduced image
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
         tmp_path = tmp.name
-        cv2.imwrite(tmp_path, cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR))
+        if alpha_channel is not None:
+            # Re-attach alpha channel
+            bgr = cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR)
+            bgra = np.dstack((bgr, alpha_channel))
+            cv2.imwrite(tmp_path, bgra)
+        else:
+            cv2.imwrite(tmp_path, cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR))
     
     try:
         # Single-pass vectorization (FAST)

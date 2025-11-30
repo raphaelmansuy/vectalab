@@ -442,15 +442,28 @@ def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
         from PIL import Image
         
         # Load input
-        img_ref = cv2.imread(str(input_path))
+        img_ref = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
         if img_ref is None: return {}
-        img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
+        
+        # Handle alpha
+        has_alpha = False
+        if img_ref.ndim == 3 and img_ref.shape[2] == 4:
+            has_alpha = True
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGRA2RGBA)
+        elif img_ref.ndim == 3 and img_ref.shape[2] == 3:
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
+        else:
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_GRAY2RGB)
         
         # Render output SVG
         h, w = img_ref.shape[:2]
         with open(output_path, 'r') as f:
             svg_content = f.read()
-        img_out = render_svg_to_array(svg_content, w, h)
+            
+        if has_alpha:
+            img_out = render_svg_to_array(svg_content, w, h, mode='RGBA')
+        else:
+            img_out = render_svg_to_array(svg_content, w, h, mode='RGB')
         
         # Calculate metrics
         s = ssim(img_ref, img_out, channel_axis=2, data_range=255) * 100

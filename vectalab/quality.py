@@ -91,7 +91,7 @@ def analyze_svg_content(svg_content: str) -> Dict[str, Any]:
         }
 
 
-def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray:
+def render_svg_to_array(svg_content: str, width: int, height: int, mode: str = 'RGB') -> np.ndarray:
     """Render SVG to numpy array."""
     if not CAIROSVG_AVAILABLE:
         raise ImportError("cairosvg required for rendering")
@@ -102,7 +102,7 @@ def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray
         output_height=height
     )
     
-    img = Image.open(BytesIO(png_data)).convert('RGB')
+    img = Image.open(BytesIO(png_data)).convert(mode)
     return np.array(img)
 
 
