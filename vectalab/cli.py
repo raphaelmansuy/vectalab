@@ -49,6 +49,14 @@ class Quality(str, Enum):
     ultra = "ultra"
 
 
+class LogoQuality(str, Enum):
+    """Quality preset for logo vectorization."""
+    clean = "clean"
+    balanced = "balanced"
+    high = "high"
+    ultra = "ultra"
+
+
 class Device(str, Enum):
     """Compute device."""
     auto = "auto"
@@ -869,6 +877,14 @@ def logo(
             rich_help_panel="Quality Options",
         )
     ] = None,
+    quality: Annotated[
+        LogoQuality,
+        typer.Option(
+            "--quality", "-q",
+            help="Quality preset (clean, balanced, high, ultra)",
+            rich_help_panel="Quality Options",
+        )
+    ] = LogoQuality.balanced,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -930,6 +946,7 @@ def logo(
     info_table.add_row("📁 Input", str(input_path))
     info_table.add_row("📄 Output", str(output_path))
     info_table.add_row("🔧 Method", "Logo (palette reduction)")
+    info_table.add_row("✨ Quality", quality.value)
     if colors:
         info_table.add_row("🎨 Colors", str(colors))
     else:
@@ -945,6 +962,7 @@ def logo(
                 str(input_path),
                 str(output_path),
                 n_colors=colors,
+                quality_preset=quality.value,
                 verbose=verbose,
             )
         
@@ -977,31 +995,64 @@ def _show_logo_results(output_path: Path, metrics: dict):
         size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
     
     # Create results table
-    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
+    result_table = Table(box=box.ROUNDED, show_header=True, border_style="green", header_style="bold cyan")
     result_table.add_column("Metric", style="bold")
     result_table.add_column("Value")
+    result_table.add_column("Meaning", style="dim")
     
     # Palette size
     palette = metrics.get('palette_size', 0)
-    result_table.add_row("Color Palette", f"{palette} colors")
+    result_table.add_row("Color Palette", f"{palette} colors", "Number of unique colors used")
     
     # SSIM
     ssim_val = metrics.get('ssim', 0)
     ssim_text = format_ssim(ssim_val)
-    result_table.add_row("Quality (SSIM)", ssim_text)
+    result_table.add_row("Quality (SSIM)", ssim_text, "Pixel-perfect similarity (includes noise)")
+    
+    # Perceptual SSIM
+    ssim_perceptual = metrics.get('ssim_perceptual', 0)
+    if ssim_perceptual > 0:
+        result_table.add_row("Visual Fidelity", f"{ssim_perceptual*100:.2f}%", "Structural similarity (ignores noise)")
+    
+    # Edge Similarity
+    edge_sim = metrics.get('edge_similarity', 0)
+    if edge_sim > 0:
+        result_table.add_row("Edge Accuracy", f"{edge_sim*100:.2f}%", "Geometric alignment of boundaries")
+        
+    # Color Accuracy
+    delta_e = metrics.get('delta_e', 0)
+    if delta_e > 0:
+        # Color code Delta E
+        if delta_e < 2.3:
+            de_style = "green" # Imperceptible
+        elif delta_e < 10:
+            de_style = "yellow" # Acceptable
+        else:
+            de_style = "red" # Bad
+        result_table.add_row("Color Error (ΔE)", Text(f"{delta_e:.2f}", style=de_style), "Color deviation (lower is better)")
+    
+    # Topology
+    topology = metrics.get('topology_score', 0)
+    if topology > 0:
+        result_table.add_row("Topology", f"{topology*100:.2f}%", "Preservation of holes and islands")
     
     # SSIM vs reduced
     ssim_reduced = metrics.get('ssim_vs_reduced', 0)
-    result_table.add_row("SSIM vs Reduced", f"{ssim_reduced*100:.2f}%")
+    result_table.add_row("SSIM vs Reduced", f"{ssim_reduced*100:.2f}%", "Similarity to palette-reduced image")
     
     # File size
-    result_table.add_row("File Size", size_str)
+    result_table.add_row("File Size", size_str, "Output SVG file size")
     
     # Path count
     path_count = metrics.get('path_count', 0)
-    result_table.add_row("SVG Paths", str(path_count))
+    result_table.add_row("SVG Paths", str(path_count), "Number of independent shapes")
     
-    result_table.add_row("Output", str(output_path))
+    # Segments
+    segments = metrics.get('total_segments', 0)
+    if segments > 0:
+        result_table.add_row("Complexity", f"{segments} segments", "Total number of curve segments")
+    
+    result_table.add_row("Output", str(output_path), "Path to generated file")
     
     title = "🎨 Logo Vectorization Complete"
     border_style = "green"

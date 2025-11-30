@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Tuple, Dict, Any, Optional
 import tempfile
 import os
+import xml.etree.ElementTree as ET
+import re
 
 # Try imports
 try:
@@ -37,6 +39,7 @@ except ImportError:
 
 try:
     from skimage.metrics import structural_similarity as ssim
+    from skimage import color as skimage_color
     SKIMAGE_AVAILABLE = True
 except ImportError:
     SKIMAGE_AVAILABLE = False
@@ -45,6 +48,42 @@ except ImportError:
 # ============================================================================
 # QUALITY METRICS
 # ============================================================================
+
+def analyze_svg_content(svg_content: str) -> Dict[str, Any]:
+    """
+    Analyze SVG structure for complexity.
+    
+    Returns:
+        Dictionary with path count, complexity metrics
+    """
+    try:
+        # Simple regex parsing is often more robust for simple stats than XML parsing
+        # especially with namespaces
+        path_count = len(re.findall(r'<path', svg_content))
+        
+        # Estimate complexity by path data length
+        # Find all d="..." attributes
+        d_attrs = re.findall(r'd="([^"]+)"', svg_content)
+        total_path_len = sum(len(d) for d in d_attrs)
+        avg_path_len = total_path_len / path_count if path_count > 0 else 0
+        
+        # Count segments (M, L, C, Q, Z, etc.)
+        total_segments = sum(len(re.findall(r'[a-zA-Z]', d)) for d in d_attrs)
+        
+        return {
+            "path_count": path_count,
+            "total_path_data_len": total_path_len,
+            "avg_path_data_len": avg_path_len,
+            "total_segments": total_segments,
+            "segments_per_path": total_segments / path_count if path_count > 0 else 0
+        }
+    except Exception as e:
+        return {
+            "path_count": 0, 
+            "error": str(e),
+            "total_segments": 0
+        }
+
 
 def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray:
     """Render SVG to numpy array."""
@@ -61,6 +100,118 @@ def render_svg_to_array(svg_content: str, width: int, height: int) -> np.ndarray
     return np.array(img)
 
 
+def compute_edge_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
+    """
+    Compute edge similarity using dilated Canny edges.
+    Returns IoU of edges (0.0 to 1.0).
+    """
+    # Convert to grayscale
+    g1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+    g2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+    
+    # Canny edge detection (auto thresholds could be better but fixed is standard)
+    e1 = cv2.Canny(g1, 100, 200)
+    e2 = cv2.Canny(g2, 100, 200)
+    
+    # Dilate to allow small misalignment (1px tolerance)
+    kernel = np.ones((3,3), np.uint8)
+    e1_d = cv2.dilate(e1, kernel, iterations=1)
+    e2_d = cv2.dilate(e2, kernel, iterations=1)
+    
+    # Compute overlap (IoU)
+    intersection = np.logical_and(e1_d > 0, e2_d > 0)
+    union = np.logical_or(e1_d > 0, e2_d > 0)
+    
+    if np.sum(union) == 0:
+        return 1.0 # No edges in either
+        
+    return np.sum(intersection) / np.sum(union)
+
+
+def compute_color_accuracy(img1: np.ndarray, img2: np.ndarray) -> float:
+    """
+    Compute average Delta E (CIE76) color difference.
+    Lower is better. < 2.3 is barely noticeable.
+    """
+    if not SKIMAGE_AVAILABLE:
+        return 0.0
+        
+    # Convert to LAB
+    try:
+        lab1 = skimage_color.rgb2lab(img1)
+        lab2 = skimage_color.rgb2lab(img2)
+        
+        # Delta E (CIE76)
+        diff = lab1 - lab2
+        delta_e = np.sqrt(np.sum(diff**2, axis=2))
+        
+        return float(np.mean(delta_e))
+    except Exception:
+        return 0.0
+
+
+def compute_topology_preservation(img1: np.ndarray, img2: np.ndarray) -> float:
+    """
+    Compute topology preservation score (0.0 to 1.0).
+    Checks if the number of connected components and holes matches.
+    
+    This is critical for logos (e.g. preserving the hole in 'A' or 'B').
+    """
+    def get_topology_stats(img):
+        if len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = img
+            
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Find contours with hierarchy to detect holes
+        # RETR_CCOMP organizes into two levels: components and holes
+        contours, hierarchy = cv2.findContours(binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if hierarchy is None:
+            return 0, 0
+            
+        num_components = 0
+        num_holes = 0
+        
+        # Iterate through hierarchy
+        # hierarchy[0] is an array of shape (N, 4)
+        # [Next, Previous, First_Child, Parent]
+        for i, h in enumerate(hierarchy[0]):
+            # h[3] is parent index
+            if h[3] == -1:
+                # No parent -> External contour (Component)
+                num_components += 1
+            else:
+                # Has parent -> Internal contour (Hole)
+                num_holes += 1
+                
+        return num_components, num_holes
+
+    c1, h1 = get_topology_stats(img1)
+    c2, h2 = get_topology_stats(img2)
+    
+    # Calculate score based on relative error
+    max_c = max(c1, c2)
+    max_h = max(h1, h2)
+    
+    score_c = 1.0
+    if max_c > 0:
+        score_c = 1.0 - (abs(c1 - c2) / max_c)
+    elif c1 != c2:
+        score_c = 0.0
+        
+    score_h = 1.0
+    if max_h > 0:
+        score_h = 1.0 - (abs(h1 - h2) / max_h)
+    elif h1 != h2:
+        score_h = 0.0
+    
+    # Average the scores
+    return (score_c + score_h) / 2.0
+
+
 def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[str, Any]:
     """
     Compute detailed pixel-by-pixel quality metrics.
@@ -71,8 +222,16 @@ def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[st
     # SSIM
     if SKIMAGE_AVAILABLE:
         ssim_value = ssim(original, rendered, channel_axis=2, data_range=255)
+        
+        # Perceptual SSIM (Blurred)
+        # Blur removes high-frequency noise/pixelation to compare structural shapes
+        # Sigma=1.5 approximates the "softness" of human vision / anti-aliasing
+        orig_blur = cv2.GaussianBlur(original, (0, 0), 1.5)
+        rend_blur = cv2.GaussianBlur(rendered, (0, 0), 1.5)
+        ssim_perceptual = ssim(orig_blur, rend_blur, channel_axis=2, data_range=255)
     else:
         ssim_value = 0.0
+        ssim_perceptual = 0.0
     
     # Pixel differences
     diff = np.abs(original.astype(float) - rendered.astype(float))
@@ -92,8 +251,17 @@ def compute_pixel_metrics(original: np.ndarray, rendered: np.ndarray) -> Dict[st
     problem_pixels_100 = np.sum(diff_gray > 100)
     total_pixels = original.shape[0] * original.shape[1]
     
+    # New Metrics
+    edge_sim = compute_edge_similarity(original, rendered)
+    delta_e = compute_color_accuracy(original, rendered)
+    topology = compute_topology_preservation(original, rendered)
+    
     return {
         "ssim": ssim_value,
+        "ssim_perceptual": ssim_perceptual,
+        "edge_similarity": edge_sim,
+        "delta_e": delta_e,
+        "topology_score": topology,
         "psnr": psnr,
         "mae": mae,
         "max_error": max_error,
@@ -191,6 +359,62 @@ QUALITY_PRESETS = {
         'max_iterations': 10,
         'splice_threshold': 45,
         'path_precision': 5,
+    },
+}
+
+# Logo vectorization presets
+LOGO_PRESETS = {
+    "clean": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 4,
+        'color_precision': 6,
+        'layer_difference': 16,
+        'corner_threshold': 60,
+        'length_threshold': 4.0,
+        'max_iterations': 10,
+        'splice_threshold': 45,
+        'path_precision': 5,
+    },
+    "balanced": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 3,
+        'color_precision': 7,
+        'layer_difference': 12,
+        'corner_threshold': 50,
+        'length_threshold': 3.0,
+        'max_iterations': 12,
+        'splice_threshold': 40,
+        'path_precision': 6,
+    },
+    "high": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 2,
+        'color_precision': 8,
+        'layer_difference': 8,
+        'corner_threshold': 40,
+        'length_threshold': 2.0,
+        'max_iterations': 15,
+        'splice_threshold': 35,
+        'path_precision': 7,
+    },
+    "ultra": {
+        'colormode': 'color',
+        'hierarchical': 'stacked',
+        'mode': 'spline',
+        'filter_speckle': 1,
+        'color_precision': 8,
+        'layer_difference': 4,
+        'corner_threshold': 30,
+        'length_threshold': 1.5,
+        'max_iterations': 20,
+        'splice_threshold': 30,
+        'path_precision': 8,
     },
 }
 
@@ -667,6 +891,7 @@ def vectorize_logo_clean(
     input_path: str,
     output_path: str,
     n_colors: int = None,
+    quality_preset: str = "balanced",
     verbose: bool = True,
 ) -> Tuple[str, Dict[str, Any]]:
     """
@@ -681,6 +906,7 @@ def vectorize_logo_clean(
         input_path: Path to input image
         output_path: Path for output SVG
         n_colors: Force specific palette size (auto-detect if None)
+        quality_preset: Quality preset (clean, balanced, high, ultra)
         verbose: Print progress
         
     Returns:
@@ -709,6 +935,13 @@ def vectorize_logo_clean(
     # Determine palette size
     if n_colors is None:
         n_colors = get_optimal_palette_size(analysis)
+        
+        # Boost palette size for high quality presets if image is complex
+        if n_colors >= 32:
+            if quality_preset == "ultra":
+                n_colors = 64
+            elif quality_preset == "high":
+                n_colors = 48
     
     if verbose:
         print(f"Using palette: {n_colors} colors (K-means clustering)")
@@ -726,19 +959,14 @@ def vectorize_logo_clean(
         cv2.imwrite(tmp_path, cv2.cvtColor(reduced, cv2.COLOR_RGB2BGR))
     
     # Settings optimized for palette-reduced images
-    settings = {
-        'colormode': 'color',
-        'hierarchical': 'stacked',
-        'mode': 'spline',
-        'filter_speckle': 4,
-        'color_precision': 6,
-        'layer_difference': 16,
-        'corner_threshold': 60,
-        'length_threshold': 4.0,
-        'max_iterations': 10,
-        'splice_threshold': 45,
-        'path_precision': 5,
-    }
+    if quality_preset not in LOGO_PRESETS:
+        print(f"Warning: Unknown preset '{quality_preset}', using 'balanced'")
+        quality_preset = "balanced"
+        
+    settings = LOGO_PRESETS[quality_preset]
+    
+    if verbose:
+        print(f"Using quality preset: {quality_preset}")
     
     try:
         vtracer.convert_image_to_svg_py(tmp_path, output_path, **settings)
@@ -753,9 +981,13 @@ def vectorize_logo_clean(
         # Also compute vs reduced image
         metrics_vs_reduced = compute_pixel_metrics(reduced, rendered)
         
+        # Analyze SVG complexity
+        svg_analysis = analyze_svg_content(svg_content)
+        
         # Add file stats
         metrics['file_size'] = len(svg_content.encode('utf-8'))
-        metrics['path_count'] = svg_content.count('<path')
+        metrics['path_count'] = svg_analysis['path_count']
+        metrics['total_segments'] = svg_analysis['total_segments']
         metrics['palette_size'] = n_colors
         metrics['is_logo'] = analysis['is_logo']
         metrics['ssim_vs_reduced'] = metrics_vs_reduced['ssim']
@@ -763,9 +995,11 @@ def vectorize_logo_clean(
         if verbose:
             print(f"\nResult:")
             print(f"  SSIM vs original: {metrics['ssim']*100:.2f}%")
+            print(f"  Perceptual SSIM:  {metrics['ssim_perceptual']*100:.2f}%")
             print(f"  SSIM vs reduced:  {metrics['ssim_vs_reduced']*100:.2f}%")
             print(f"  File size: {metrics['file_size']:,} bytes ({metrics['file_size']/1024:.1f} KB)")
             print(f"  Paths: {metrics['path_count']}")
+            print(f"  Segments: {metrics['total_segments']}")
         
         return output_path, metrics
         
