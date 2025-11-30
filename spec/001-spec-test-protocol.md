@@ -1,227 +1,134 @@
-# Test and Improvement Protocol for Vectalab
+# SOTA Test and Improvement Protocol for Logos & Illustrations
 
 ## Overview
-This protocol establishes a systematic test and improvement process for Vectalab, focusing on improving the vectorization algorithm to produce SVGs that closely match the original vector graphics when rendered.
+This protocol defines the rigorous process required to achieve **State-of-the-Art (SOTA)** vectorization for logos and illustrations. Unlike general photo vectorization, logos and flat illustrations require **geometric precision**, **clean topology**, and **exact color reproduction**.
+
+Our goal is to produce SVGs that are indistinguishable from source files created in professional tools like Illustrator or Figma, suitable for production use in branding and web design.
 
 ## Quick Start
 
 ### Prerequisites
-- Vectalab installed with dependencies: `pip install -e .`
-- Test infrastructure ready: `mkdir -p test_data/{svg_mono,svg_multi,png_mono,png_multi,vectalab_mono,vectalab_multi}`
+- Vectalab installed: `pip install -e .`
+- Test data directories: `mkdir -p test_data/{svg_mono,svg_multi,png_mono,png_multi,vectalab_mono,vectalab_multi,reports}`
 
-### One-Command Baseline Setup
+### Standard Workflow
 ```bash
-# Step 1: Download test icons
+# 1. Setup Test Data
 python scripts/download_test_svgs.py
-
-# Step 2: Convert to PNG
 python scripts/convert_svg_to_png.py
 
-# Step 3: Quick 6-icon baseline (fast)
-python scripts/quick_baseline.py
+# 2. Run SOTA Baseline (Logo Mode)
+python scripts/quick_baseline.py --mode logo
 
-# Step 4: Generate comparison report
+# 3. Generate Comparison Report
 python scripts/compare_results.py
 ```
 
-This will produce: `test_data/baseline_report.txt` with SSIM metrics.
+## SOTA Test Suites
 
-## Test Case Setup
+### 1. Geometric Precision Suite (The "Corner" Test)
+- **Dataset**: 20 Feather Icons (Monochrome, Stroke-based)
+- **Focus**: Sharp corners, consistent stroke widths, perfect circles.
+- **SOTA Goal**: 
+    - No rounded corners where sharp ones exist.
+    - Perfect alignment with original paths.
+    - **SSIM > 99.9%**
 
-### 1. SVG Icon Selection
-- **Monochrome Library**: Feather Icons (https://feathericons.com/)
-  - 20 icons: circle, square, triangle, star, heart, user, home, search, settings, camera, cloud, sun, moon, wind, rain, coffee, code, terminal, cpu, database
-  - Open-source, simple, stroke-based designs
-  - Ideal for testing clean vectorization
+### 2. Brand Identity Suite (The "Color" Test)
+- **Dataset**: 20 Font Awesome Brands + Complex Real-World Logos (e.g., Elitizon)
+- **Focus**: Exact palette reproduction, separation of distinct colored regions.
+- **SOTA Goal**: 
+    - Zero "speckle" noise.
+    - Exact color matches (ΔE < 1.0).
+    - **Topology Score = 100%** (No missing holes in letters like 'A', 'O', 'e').
 
-- **Multi-Color Library**: Font Awesome Brands (https://fontawesome.com/icons)
-  - 20 icons: github, twitter, facebook, instagram, youtube, linkedin, google, apple, microsoft, amazon, slack, spotify, netflix, airbnb, dropbox, trello, atlassian, jira, bitbucket, gitlab
-  - Complex color palettes and fills
-  - Tests ability to handle multi-color assets
+### 3. Illustration Suite (The "Layer" Test)
+- **Dataset**: Flat Illustrations (UnDraw style) + W3C Complex Scenes
+- **Focus**: Layer ordering, occlusion handling, and clean boundaries between shapes.
+- **SOTA Goal**:
+    - Clean separation of foreground/background.
+    - Efficient path usage (no thousands of tiny polygons).
+    - **Visual Fidelity > 99.9%**
 
-- **Complex Scenes**: W3C SVG Test Suite & Samples
-  - 10 scenes: tiger, car, gallardo, tommek_Car, compuserver_msn_Ford_Focus, juanmontoya_lingerie, scimitar, rg1024_green_grapes, rg1024_Presentation_with_girl, rg1024_metal_effect
-  - High complexity, gradients, many paths, realistic illustrations
-  - Tests performance and detail preservation
+## The SOTA Improvement Loop (OODA)
 
-### 2. Download Process
+Follow this cycle to systematically eliminate artifacts.
+
+### 1. Observe (Micro-Analysis)
+Run the test suite and zoom in on the output.
 ```bash
-python scripts/download_test_svgs.py
+python scripts/run_vectalab_test.py --mode logo
 ```
-- Downloads from official GitHub repositories
-- Stores in: `test_data/svg_mono/` and `test_data/svg_multi/`
+- **Check**: `test_data/baseline_report.txt`
+- **Identify**: The bottom 3 performing assets.
 
-### 3. PNG Conversion
+### 2. Orient (Artifact Classification)
+Identify specific non-SOTA artifacts:
+- **The "Wobble"**: Straight lines that have slight curvature or jitter.
+- **The "Speckle"**: Tiny islands of color that should be merged into the background.
+- **The "Gap"**: White spaces or cracks between adjacent shapes.
+- **The "Blob"**: Sharp details (like serifs on text) smoothed out into blobs.
+- **The "Wrong Color"**: Gradients approximated by banding or wrong palette selection.
+
+### 3. Decide (Targeted Optimization)
+Choose a strategy to fix the identified error.
+
+**Strategy A: Palette Optimization (Critical for Logos)**
+Logos usually have a limited, discrete palette.
+- *Action*: Use the `--colors` argument to force a specific palette size (e.g., 2, 4, 8).
+- *Action*: Tune K-means clustering parameters to better separate similar shades.
+
+**Strategy B: Geometric Tuning**
+- *Action*: Adjust `corner_threshold` to preserve sharpness.
+- *Action*: Increase `path_precision` to capture subtle curves in illustrations.
+- *Action*: Use `--quality ultra` for maximum vertex count optimization.
+
+**Strategy C: Topology Repair**
+- *Action*: If holes are filled (e.g., inside an 'O'), adjust the `layer_difference` threshold.
+
+### 4. Act (Implementation & Verification)
+Implement the fix and verify.
+
+**Step 1: Single Asset Verification**
+Test ONLY the problematic asset.
 ```bash
-python scripts/convert_svg_to_png.py
+# Use the specific logo command for best results
+vectalab logo test_data/png_multi/brand.png --quality ultra --colors 4
 ```
-- Converts each SVG to PNG using CairoSVG
-- Resolution: 256x256 pixels (balance of detail and speed)
-- Outputs to: `test_data/png_mono/` and `test_data/png_multi/`
-- These serve as reference/baseline images
 
-## Vectorization Testing
-
-### 4. Vectalab Processing
-
-**Full Test Suite** (all 20 icons):
-```bash
-python scripts/run_vectalab_test.py
-```
-Settings: HIFI method, balanced quality
-
-**Quick Baseline** (6 icons, fast):
+**Step 2: Regression Test**
+Ensure no other logos degraded.
 ```bash
 python scripts/quick_baseline.py
 ```
-Settings: HIFI method, figma quality (fastest)
 
-**Direct Library** (alternative, no CLI):
-```bash
-python scripts/vectorize_direct.py
-```
-Settings: SAM segmentation, auto device
+## Success Criteria & Metrics (SOTA Standards)
 
-Outputs to: `test_data/vectalab_mono/` and `test_data/vectalab_multi/`
+| Category | Metric | SOTA Target | Min Acceptable | Description |
+|----------|--------|-------------|----------------|-------------|
+| **Structural** | **SSIM** | **> 99.95%** | 99.5% | Indistinguishable to the eye. |
+| **Perceptual** | **Visual Fidelity** | **> 99.99%** | 99.8% | Structural similarity ignoring noise. |
+| **Geometric** | **Topology** | **100%** | 99.0% | Perfect preservation of holes/islands. |
+| **Geometric** | **Edge Accuracy** | **> 99.0%** | 98.0% | Edges align within sub-pixel precision. |
+| **Color** | **Color Error (ΔE)** | **< 1.0** | < 2.3 | Imperceptible color difference. |
+| **Efficiency** | **Path Count** | **< 1.2x** | < 2x | Clean, human-readable SVG code. |
+| **Performance** | **Time** | **< 2s/logo** | < 10s/logo | Fast enough for real-time workflows. |
 
-### 5. Quality Assessment
-```bash
-python scripts/compare_results.py
-```
+### Metric Definitions
 
-Analysis:
-- Renders original and vectorized SVGs to PNG (same resolution)
-- Calculates SSIM (Structural Similarity Index) for each icon
-- Computes statistics: mean, min, max, std dev
-- Generates detailed report: `test_data/baseline_report.txt`
-
-## OODA Loop Improvement Process
-
-This protocol follows the OODA Loop (Observe, Orient, Decide, Act) for continuous improvement.
-
-### 6. Observe (Baseline Establishment)
-1. Run vectorization on the full test set (20 mono + 20 multi icons).
-2. Execute comparison script to generate metrics.
-3. Review `test_data/baseline_report.txt` to identify:
-   - Average SSIM, PSNR, MSE for mono and multi-color.
-   - Icons with lowest scores (problematic cases).
-   - Processing time patterns.
-
-### 7. Orient (Analysis)
-1. Analyze failure cases (low SSIM/PSNR icons).
-2. Visually inspect the difference between original and vectorized images.
-3. Identify common issues (e.g., stroke width, corner handling, color reduction, gradient loss).
-4. Hypothesize the root cause in the algorithm (e.g., segmentation parameters, tracing thresholds).
-
-### 8. Decide (Planning)
-1. Select a specific issue to address.
-2. Formulate a plan for algorithm refinement.
-3. Decide on the scope of changes (parameter tuning vs. code refactoring).
-4. Create a hypothesis for the expected improvement.
-
-### 9. Act (Implementation & Testing)
-1. Implement the targeted fix in the core algorithm.
-2. Test on problematic icons first using `quick_baseline.py`.
-3. Verify no regressions on known good icons.
-4. Run the full test suite `run_vectalab_test.py`.
-5. Compare results with the previous baseline.
-6. Commit changes if metrics improve.
-7. Repeat the loop.
-
-### 10. Iterative Testing Commands
-```bash
-# After each algorithm change:
-python scripts/quick_baseline.py       # Quick validation
-python scripts/compare_results.py      # Check metrics
-# Review test_data/baseline_report.txt
-# Track improvements in log files
-```
-
-### 9. Performance Monitoring
-- Record processing time per icon (output by scripts)
-- Monitor memory usage for large batches
-- Balance quality vs speed trade-offs
-- Target: < 30 seconds per icon on standard hardware
-
-## Test Metrics
-
-### SSIM (Structural Similarity Index)
-- Measures perceived similarity: 0% (completely different) to 100% (identical)
-- Formula: SSIM = (2μ₁μ₂ + c₁)(2σ₁₂ + c₂) / ((μ₁² + μ₂²+ c₁)(σ₁² + σ₂² + c₂))
-- Accounts for: luminance, contrast, structure
-
-### PSNR (Peak Signal-to-Noise Ratio)
-- Measures the ratio between the maximum possible power of a signal and the power of corrupting noise.
-- Expressed in decibels (dB). Higher is better.
-- Typical values for good quality images are between 30 and 50 dB.
-
-### MSE (Mean Squared Error)
-- Measures the average of the squares of the errors.
-- Lower is better. 0 means identical images.
-
-### Success Criteria
-- **Monochrome**: Average SSIM ≥ 99.8%
-- **Multi-Color**: Average SSIM ≥ 99.5% (more challenging)
-- **Complex Scenes**: Average SSIM ≥ 90.0% (very challenging)
-- **Worst Case**: No icon should drop below 95% (80% for complex)
-- **Processing**: < 30 seconds per icon (< 120s for complex)
-
-## Files and Scripts
-
-### Data Download
-- `scripts/download_test_svgs.py` - Fetch from GitHub
-
-### Preparation
-- `scripts/convert_svg_to_png.py` - SVG → PNG conversion
-
-### Vectorization
-- `scripts/run_vectalab_test.py` - Full suite (all 20 icons)
-- `scripts/quick_baseline.py` - Fast 6-icon baseline
-- `scripts/vectorize_direct.py` - Direct core library call
-
-### Analysis
-- `scripts/compare_results.py` - SSIM calculation and reporting
-- `test_data/baseline_report.txt` - Generated metrics report
-
-### Documentation
-- `TEST_PROTOCOL_README.md` - Extended reference guide
-- `spec/001-spec-test-protocol.md` - This file
+- **SSIM**: Standard structural similarity. For logos, we demand near-perfection.
+- **Visual Fidelity**: Perceptual SSIM. Critical for illustrations where minor noise is acceptable but shape distortion is not.
+- **Topology Score**: The ratio of matched connected components and holes. 100% means the vector has the exact same structure as the raster.
+- **Edge Accuracy**: Canny edge detection overlap. Ensures lines are where they should be.
+- **Color Error (ΔE)**: CIEDE2000. SOTA requires $\Delta E < 1.0$ (visually identical).
 
 ## Troubleshooting
 
-### CLI Hangs
-If `vectalab convert` command hangs:
-```bash
-# Use direct core library instead
-python scripts/vectorize_direct.py
-```
+- **Text looks bad?** Text is the hardest part of logo vectorization. Ensure `corner_threshold` is high (60 degrees+) to keep serifs sharp.
+- **Too many colors?** The algorithm might be detecting compression artifacts as new colors. Use `--colors <N>` to force reduction.
+- **Gaps between shapes?** This is a common issue with "tracing" algorithms. Ensure "layer stacking" is enabled to place shapes on top of a background rather than adjacent to it.
 
-### Memory Issues
-- Reduce batch size
-- Use figma quality preset instead of ultra
-- Process icons sequentially instead of batch
-
-### Import Errors
-```bash
-# Reinstall development mode
-pip install -e .
-```
-
-## Next Steps
-
-1. Run quick baseline to establish current metrics
-2. Identify 2-3 icons with lowest SSIM
-3. Analyze what makes them difficult
-4. Implement first improvement
-5. Track improvement with re-runs
-6. Document changes in git commits
-
-## Future Extensions
-
-- Expand test set to 50+ icons
-- Add LPIPS (perceptual similarity) metric
-- Test with different resolutions (128x128, 512x512)
-- Include edge cases (thick strokes, thin lines, complex gradients)
-- Automated CI/CD regression testing
-- Visual diff reports highlighting differences</content>
-<parameter name="filePath">/Users/raphaelmansuy/Github/03-working/vmagic/spec/001-spec-test-protocol.md
+## Future Improvements
+- **OCR Integration**: Detect text and replace with actual fonts.
+- **Gradient Mesh**: Support true SVG gradients instead of solid bands.
+- **Symmetry Detection**: Enforce perfect symmetry for geometric logos.

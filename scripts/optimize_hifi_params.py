@@ -92,13 +92,31 @@ def run_test(input_png, output_svg, preset):
         print(f"Exception: {e}")
         return None
 
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser(description="Optimize HIFI parameters")
+    parser.add_argument("--target", type=str, help="Specific target icon name (e.g., 'tiger')")
+    args = parser.parse_args()
+
     # Test images (subset of complex)
-    test_images = [
-        "test_data/png_complex/tiger.png",
-        "test_data/png_complex/rg1024_green_grapes.png",
-        "test_data/png_complex/rg1024_metal_effect.png"
-    ]
+    if args.target:
+        # Try to find the target in various folders
+        candidates = [
+            f"test_data/png_complex/{args.target}.png",
+            f"test_data/png_mono/{args.target}.png",
+            f"test_data/png_multi/{args.target}.png"
+        ]
+        test_images = [c for c in candidates if os.path.exists(c)]
+        if not test_images:
+            print(f"Error: Target '{args.target}' not found in test_data/png_*/")
+            return
+    else:
+        test_images = [
+            "test_data/png_complex/tiger.png",
+            "test_data/png_complex/rg1024_green_grapes.png",
+            "test_data/png_complex/rg1024_metal_effect.png"
+        ]
     
     presets = ["ultra", "sota_candidate", "ultra_max"]
     

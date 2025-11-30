@@ -78,13 +78,30 @@ def run_bayesian_test(input_png, output_svg):
         print(f"✗ Error: {e}")
         return False
 
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser(description="Test Bayesian vectorization")
+    parser.add_argument("--target", type=str, help="Specific target icon name (e.g., 'tiger')")
+    args = parser.parse_args()
+
     # Test on a few complex images
-    test_images = [
-        "test_data/png_complex/tiger.png",
-        "test_data/png_complex/rg1024_green_grapes.png",
-        "test_data/png_complex/rg1024_metal_effect.png"
-    ]
+    if args.target:
+        candidates = [
+            f"test_data/png_complex/{args.target}.png",
+            f"test_data/png_mono/{args.target}.png",
+            f"test_data/png_multi/{args.target}.png"
+        ]
+        test_images = [c for c in candidates if os.path.exists(c)]
+        if not test_images:
+            print(f"Error: Target '{args.target}' not found in test_data/png_*/")
+            return
+    else:
+        test_images = [
+            "test_data/png_complex/tiger.png",
+            "test_data/png_complex/rg1024_green_grapes.png",
+            "test_data/png_complex/rg1024_metal_effect.png"
+        ]
     
     output_dir = "test_data/vectalab_bayesian"
     os.makedirs(output_dir, exist_ok=True)
