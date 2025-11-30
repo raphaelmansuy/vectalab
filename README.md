@@ -78,6 +78,9 @@ vectalab-benchmark --input-dir ./my_images --mode premium
 
 # Run standard test sets
 vectalab-benchmark --sets mono multi
+
+# Run the Golden Dataset benchmark (Protocol v2)
+vectalab-benchmark --sets golden
 ```
 
 ### Python
@@ -116,6 +119,7 @@ See [Modal Setup Guide](docs/modal_setup.md) for details.
 - [Python API](docs/api.md) - Programmatic usage
 - [Examples](docs/examples.md) - Common workflows
 - [Algorithm](docs/algorithm.md) - Technical details
+- [Benchmark Protocol v2](docs/protocol_v2.md) - Testing methodology
 - [Cloud Setup](docs/modal_setup.md) - Modal integration guide
 
 ## Architecture

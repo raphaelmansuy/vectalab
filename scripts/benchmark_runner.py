@@ -8,17 +8,17 @@ calculating detailed metrics (SSIM, Topology, Edge Accuracy, Delta E), and gener
 visual HTML reports.
 
 Usage:
-    vectalab-benchmark [OPTIONS]
+    python scripts/benchmark_runner.py [OPTIONS]
 
 Examples:
     # Run on standard test sets
-    vectalab-benchmark --sets mono multi
+    python scripts/benchmark_runner.py --sets mono multi
 
     # Run on a custom directory of images
-    vectalab-benchmark --input-dir ./my_images --mode premium
+    python scripts/benchmark_runner.py --input-dir ./my_images --mode premium
 
     # Run with specific quality settings
-    vectalab-benchmark --quality balanced --colors 16
+    python scripts/benchmark_runner.py --quality balanced --colors 16
 """
 
 import os
@@ -28,11 +28,10 @@ import time
 import shutil
 import subprocess
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 import cv2
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr
@@ -46,7 +45,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from vectalab.quality import analyze_image
 
 # Initialize Rich Console
 console = Console()
@@ -59,39 +57,6 @@ TEST_RUNS_DIR = BASE_DIR / "test_runs"
 TEMPLATE_DIR = BASE_DIR / "scripts" / "templates"
 
 # --- Metrics Functions ---
-
-def is_monochrome_icon(img_path):
-    """
-    Check if the image is a monochrome icon on transparent background.
-    Returns (bool, color_tuple).
-    """
-    try:
-        img = Image.open(img_path).convert('RGBA')
-        arr = np.array(img)
-        alpha = arr[:, :, 3]
-        
-        # If mostly opaque (e.g. > 95%), it's likely not a transparent icon
-        if np.mean(alpha > 10) > 0.95: 
-            return False, None
-        
-        # Check colors of visible pixels
-        visible_mask = alpha > 10
-        if not np.any(visible_mask): 
-            return False, None
-        
-        visible = arr[visible_mask]
-        
-        # Get average color and variance
-        avg_color = np.mean(visible[:, :3], axis=0)
-        std_color = np.std(visible[:, :3], axis=0)
-        
-        # Low variance implies monochrome
-        if np.max(std_color) > 30: 
-            return False, None
-            
-        return True, tuple(map(int, avg_color))
-    except Exception:
-        return False, None
 
 def render_svg_to_png(svg_path, png_output, size=512):
     """Render SVG to PNG using CairoSVG."""
@@ -183,48 +148,6 @@ def calculate_color_error(img1, img2):
     delta_e = color.deltaE_ciede2000(lab1, lab2)
     return np.mean(delta_e)
 
-def analyze_path_types(svg_path):
-    """
-    Analyze the types of path segments (Curves vs Lines) in the SVG.
-    Returns a dictionary with counts and fractions.
-    """
-    try:
-        with open(svg_path, 'r') as f:
-            content = f.read()
-        
-        # Find all d attributes
-        d_attrs = re.findall(r'd="([^"]+)"', content)
-        
-        curve_cmds = 0
-        line_cmds = 0
-        total_cmds = 0
-        
-        for d in d_attrs:
-            # Normalize spacing
-            d = re.sub(r'\s+', ' ', d).strip()
-            # Find all commands
-            commands = re.findall(r'[MmLlHhVvCcQqSsAaZz]', d)
-            
-            for cmd in commands:
-                if cmd.lower() == 'm': continue # Move doesn't count as a segment
-                
-                total_cmds += 1
-                # C, Q, S, A are curves. L, H, V, Z are lines (Z closes with a line)
-                if cmd.lower() in ['c', 'q', 's', 'a']:
-                    curve_cmds += 1
-                else:
-                    line_cmds += 1
-                    
-        fraction = (curve_cmds / total_cmds) * 100 if total_cmds > 0 else 0
-        return {
-            "total": total_cmds,
-            "curves": curve_cmds,
-            "lines": line_cmds,
-            "curve_fraction": fraction
-        }
-    except Exception:
-        return {"total": 0, "curves": 0, "lines": 0, "curve_fraction": 0}
-
 def create_checkerboard(w, h, cell_size=20, color1=(255, 255, 255), color2=(220, 220, 220)):
     """Create a checkerboard pattern image."""
     img = Image.new('RGB', (w, h), color1)
@@ -294,141 +217,31 @@ def process_image(args):
     
     # Run Vectalab
     effective_mode = mode
-    effective_quality = quality
-    mono_color = None
-    
     if mode == "auto":
-        # Smart Auto Mode
-        try:
-            # Check for Monochrome Icon first (Geometric shapes)
-            is_mono, m_color = is_monochrome_icon(input_png)
-            if is_mono:
-                effective_mode = "geometric_icon"
-                mono_color = m_color
-            else:
-                # Analyze image content
-                img = cv2.imread(str(input_png))
-                if img is not None:
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    analysis = analyze_image(img_rgb)
-                    
-                    if analysis['is_logo']:
-                        # Heuristic: High color count (> 1000) usually means complex illustration/gradients
-                        # even if top-10 coverage is high (e.g. cartoons). Use Premium for these.
-                        if analysis['unique_colors'] > 1000:
-                            effective_mode = "premium"
-                        else:
-                            effective_mode = "logo"
-                            # Heuristic: Very simple logos (high top-10 coverage) benefit from 'clean'
-                            # Complex logos benefit from 'ultra'
-                            if analysis['top_10_coverage'] > 0.90:
-                                effective_quality = "clean"
-                            else:
-                                effective_quality = "ultra"
-                    else:
-                        effective_mode = "premium"
-                else:
-                    # Fallback if image load fails
-                    if set_name == "complex":
-                        effective_mode = "premium"
-                    else:
-                        effective_mode = "logo"
-        except Exception as e:
-            # Fallback on error
-            if set_name == "complex":
-                effective_mode = "premium"
-            else:
-                effective_mode = "logo"
+        if set_name == "complex":
+            effective_mode = "premium"
+        else:
+            effective_mode = "logo"
             
-    if effective_mode == "geometric_icon":
-        # Special handling for geometric icons:
-        # 1. Create inverted image (White shape on Black bg) to help vectalab trace the shape
-        # 2. Run premium mode with shape detection
-        # 3. Post-process SVG to restore original color and transparency
-        
-        temp_input = dirs["input"] / f"temp_inverted_{name}.png"
-        try:
-            orig_img = Image.open(input_png).convert('RGBA')
-            # Create Black background
-            bg = Image.new('RGB', orig_img.size, (0, 0, 0))
-            # Paste White shape
-            white_shape = Image.new('RGB', orig_img.size, (255, 255, 255))
-            bg.paste(white_shape, mask=orig_img.split()[3])
-            bg.save(temp_input)
-            
-            cmd = ["vectalab", "premium", str(temp_input), str(output_svg), "--mode", "logo", "--shapes"]
-            
-            # Run Vectalab
-            start_time = time.time()
-            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-            duration = time.time() - start_time
-            
-            # Post-process SVG
-            if output_svg.exists():
-                tree = ET.parse(output_svg)
-                root = tree.getroot()
-                ns = {'svg': 'http://www.w3.org/2000/svg'}
-                # Register namespace to avoid ns0: prefixes
-                ET.register_namespace('', ns['svg'])
-                
-                # Find paths
-                paths_to_remove = []
-                hex_color = '#{:02x}{:02x}{:02x}'.format(*mono_color)
-                
-                for elem in root.iter():
-                    # Check if it's a path
-                    if elem.tag.endswith('path'):
-                        fill = elem.get('fill', '').lower()
-                        # If black (background), mark for removal
-                        if fill == '#000000' or fill == '#000' or (not fill and 'fill' not in elem.attrib):
-                             # Check if it covers the whole image? 
-                             # For now, assume black paths are background in this inverted scheme
-                             # But wait, what if the icon has holes? The holes are black in the inverted image.
-                             # But vectalab usually uses fill-rule or compound paths.
-                             # In our manual test, the background was a separate black path.
-                             # And the shape was a white path.
-                             # So we remove black paths.
-                             paths_to_remove.append(elem)
-                        elif fill == '#ffffff' or fill == '#fff':
-                            # This is our shape
-                            elem.set('fill', hex_color)
-                            
-                # Remove background paths
-                # Note: removing from iterator is unsafe, but we are iterating tree.iter() which flattens.
-                # We need to find parent to remove. ET doesn't support getparent easily.
-                # So we iterate direct children of root (usually paths are direct children in vectalab output)
-                
-                # Re-parse to be safe or iterate copy
-                root_children = list(root)
-                for child in root_children:
-                    if child in paths_to_remove:
-                        root.remove(child)
-                        
-                tree.write(str(output_svg))
-                
-        except Exception as e:
-            # Fallback to standard logo mode if anything fails
-            cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", "ultra"]
-            start_time = time.time()
-            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-            duration = time.time() - start_time
-            
-    elif effective_mode == "premium":
+    if effective_mode == "premium":
         # Use premium photo mode
         cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
-        start_time = time.time()
-        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-        duration = time.time() - start_time
     else:
         # Use logo mode
-        cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", effective_quality]
-        if colors:
-            cmd.extend(["--colors", str(colors)])
-        start_time = time.time()
+        cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]
+        
+    if colors:
+        cmd.extend(["--colors", str(colors)])
+    
+    start_time = time.time()
+    try:
+        # Add timeout to prevent hanging on complex images
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
         duration = time.time() - start_time
-        
-    # Render for comparison
+    except subprocess.TimeoutExpired:
+        return {"error": "Vectalab timed out (120s)", "name": name}
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Vectalab failed: {e.stderr.decode()}", "name": name}
         
     # Render for comparison
     out_png = dirs["rendered"] / f"{name}_out.png"
@@ -461,7 +274,6 @@ def process_image(args):
         edge = calculate_edge_accuracy(arr_ref, arr_out)
         de = calculate_color_error(arr_ref, arr_out)
         paths = count_paths(output_svg)
-        path_analysis = analyze_path_types(output_svg)
         
         # Create Composite
         comp_filename = f"{name}_comp.jpg"
@@ -471,15 +283,11 @@ def process_image(args):
         return {
             "icon": name,
             "set": set_name,
-            "mode": effective_mode,
-            "quality": effective_quality if effective_mode == "logo" else "N/A",
             "ssim": s,
             "topology": topo,
             "edge": edge,
             "delta_e": de,
             "paths": paths,
-            "complexity": path_analysis['total'],
-            "curve_fraction": path_analysis['curve_fraction'],
             "time": duration,
             "composite_path": f"composites/{comp_filename}",
             "svg_path": f"output/{name}.svg"
@@ -490,7 +298,7 @@ def process_image(args):
 
 # --- Main Session Logic ---
 
-def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=None, mode="auto", limit=None, filter_str=None):
+def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=None, mode="auto"):
     """
     Run a vectorization session.
     
@@ -501,8 +309,6 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         max_workers: Number of parallel workers.
         input_dir: Custom input directory (overrides sets).
         mode: Vectorization mode (auto, logo, premium).
-        limit: Limit the number of images to process.
-        filter_str: Filter images by name.
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = TEST_RUNS_DIR / timestamp
@@ -518,19 +324,9 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
     for d in dirs.values():
         d.mkdir(parents=True, exist_ok=True)
         
-    # Intelligent Worker Management
-    if max_workers is None:
-        import multiprocessing
-        cpu_count = multiprocessing.cpu_count()
-        # Conservative default: 4 or CPU/2, whichever is lower, to prevent OOM with SAM
-        max_workers = min(4, max(1, cpu_count // 2))
-        console.print(f"[dim]Auto-setting workers to {max_workers} to prevent resource exhaustion.[/]")
-    elif max_workers > 4:
-        console.print(f"[bold yellow]⚠️  Warning:[/] Running with {max_workers} workers may cause memory exhaustion or instability with heavy ML models. Recommended: 2-4.[/]")
-
     console.print(Panel(f"[bold cyan]SOTA Vectorization Session[/]\n[dim]{timestamp}[/]", border_style="cyan"))
     console.print(f"[bold]📂 Session Directory:[/] {session_dir}")
-    console.print(f"[bold]⚙️  Settings:[/] Quality=[cyan]{quality}[/], Colors=[cyan]{colors if colors else 'Auto'}[/], Workers=[cyan]{max_workers}[/], Mode=[cyan]{mode}[/]")
+    console.print(f"[bold]⚙️  Settings:[/] Quality=[cyan]{quality}[/], Colors=[cyan]{colors if colors else 'Auto'}[/], Workers=[cyan]{max_workers if max_workers else 'Auto'}[/], Mode=[cyan]{mode}[/]")
     
     tasks = []
     
@@ -600,15 +396,6 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
                 for filename in files:
                     tasks.append((filename, set_name, png_dir, svg_dir, dirs, quality, colors, mode))
             
-    if filter_str:
-        console.print(f"[dim]Filtering images by '{filter_str}'[/]")
-        filters = [f.strip().lower() for f in filter_str.split(',')]
-        tasks = [t for t in tasks if any(f in t[0].lower() for f in filters)]
-
-    if limit:
-        console.print(f"[dim]Limiting to first {limit} images.[/]")
-        tasks = tasks[:limit]
-
     console.print(f"[bold]📋 Found {len(tasks)} images to process.[/]")
     
     results = []
@@ -656,8 +443,6 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         avg_edge = np.mean([r['edge'] for r in results])
         avg_de = np.mean([r['delta_e'] for r in results])
         avg_time = np.mean([r['time'] for r in results])
-        avg_complexity = np.mean([r.get('complexity', 0) for r in results])
-        avg_curve_fraction = np.mean([r.get('curve_fraction', 0) for r in results])
         
         env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
         template = env.get_template("report_template.html")
@@ -669,9 +454,7 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
             avg_topo=avg_topo,
             avg_edge=avg_edge,
             avg_de=avg_de,
-            avg_time=avg_time,
-            avg_complexity=avg_complexity,
-            avg_curve_fraction=avg_curve_fraction
+            avg_time=avg_time
         )
         
         report_path = session_dir / "report.html"
@@ -693,8 +476,6 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
         table.add_row("Topology Score", f"{avg_topo:.1f}%")
         table.add_row("Edge Accuracy", f"{avg_edge:.1f}%")
         table.add_row("Delta E", f"{avg_de:.2f}")
-        table.add_row("Path Complexity", f"{avg_complexity:.1f} segments")
-        table.add_row("Curve Fraction", f"{avg_curve_fraction:.1f}%")
         table.add_row("Time per Image", f"{avg_time:.2f}s")
         
         console.print(table)
@@ -707,7 +488,7 @@ def run_session(sets, quality="ultra", colors=None, max_workers=None, input_dir=
 def main():
     parser = argparse.ArgumentParser(
         description="Run a SOTA Vectorization Session using Vectalab.",
-        epilog="Example:\n  vectalab-benchmark --input-dir ./my_images --mode premium",
+        epilog="Example:\n  python scripts/benchmark_runner.py --input-dir ./my_images --mode premium",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--sets", nargs="+", default=["mono", "multi", "complex"], help="Test sets to run (default: mono multi complex). Use 'golden' for the Golden Dataset.")
@@ -716,12 +497,10 @@ def main():
     parser.add_argument("--workers", type=int, default=None, help="Max number of parallel workers (default: auto)")
     parser.add_argument("--input-dir", help="Custom input directory of images to process (overrides --sets)")
     parser.add_argument("--mode", default="auto", choices=["auto", "logo", "premium"], help="Vectorization mode (default: auto)")
-    parser.add_argument("--limit", type=int, help="Limit the number of images to process (for testing)")
-    parser.add_argument("--filter", help="Filter images by name (substring match)")
     
     args = parser.parse_args()
     
-    run_session(args.sets, args.quality, args.colors, args.workers, args.input_dir, args.mode, args.limit, args.filter)
+    run_session(args.sets, args.quality, args.colors, args.workers, args.input_dir, args.mode)
 
 if __name__ == "__main__":
     main()
