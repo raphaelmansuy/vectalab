@@ -210,7 +210,7 @@ def process_image(args):
             
     if effective_mode == "premium":
         # Use premium photo mode
-        cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
+        cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--target-ssim", "0.95"]
     else:
         # Use logo mode
         cmd = ["vectalab", "logo", str(input_png), str(output_svg), "--quality", quality]

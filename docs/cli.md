@@ -25,7 +25,7 @@ vectalab premium <input> [output] [options]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--quality, -q` | 0.98 | Target SSIM (0.90-1.0) |
+| `--target-ssim, -t` | 0.98 | Target SSIM (0.90-1.0) |
 | `--precision, -p` | 2 | Coordinate decimals (1=smallest, 8=precise) |
 | `--svgo/--no-svgo` | enabled | Apply SVGO optimization |
 | `--shapes/--no-shapes` | disabled | Detect shape primitives |

@@ -1312,6 +1312,79 @@ def compare_and_visualize(
     return metrics
 
 
+def calculate_full_metrics(input_path: str, output_path: str) -> Dict[str, Any]:
+    """
+    Calculate comprehensive metrics for the conversion.
+    
+    Args:
+        input_path: Path to original raster image
+        output_path: Path to generated SVG
+        
+    Returns:
+        Dictionary containing SSIM, Topology, Edge Accuracy, Delta E,
+        and if available: LPIPS, DISTS, GMSD.
+    """
+    try:
+        # Load input
+        img_ref = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
+        if img_ref is None: 
+            return {"error": f"Could not load input image: {input_path}"}
+        
+        # Handle alpha
+        has_alpha = False
+        if img_ref.ndim == 3 and img_ref.shape[2] == 4:
+            has_alpha = True
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGRA2RGBA)
+        elif img_ref.ndim == 3 and img_ref.shape[2] == 3:
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
+        else:
+            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_GRAY2RGB)
+        
+        # Render output SVG
+        h, w = img_ref.shape[:2]
+        with open(output_path, 'r') as f:
+            svg_content = f.read()
+            
+        if has_alpha:
+            img_out = render_svg_to_array(svg_content, w, h, mode='RGBA')
+        else:
+            img_out = render_svg_to_array(svg_content, w, h, mode='RGB')
+        
+        # Calculate metrics
+        s = ssim(img_ref, img_out, channel_axis=2, data_range=255) * 100
+        topo = calculate_topology_score(img_ref, img_out)
+        edge = calculate_edge_accuracy(img_ref, img_out)
+        de = calculate_color_error(img_ref, img_out)
+        path_analysis = analyze_path_types(str(output_path))
+        
+        lpips_val = None
+        dists_val = None
+        gmsd_val = None
+        
+        if LPIPS_AVAILABLE:
+            # Convert to PIL for LPIPS
+            pil_ref = Image.fromarray(img_ref)
+            pil_out = Image.fromarray(img_out)
+            lpips_val = calculate_lpips(pil_ref, pil_out)
+            dists_val = calculate_dists(pil_ref, pil_out)
+            gmsd_val = calculate_gmsd(pil_ref, pil_out)
+        
+        return {
+            "ssim": s,
+            "topology": topo,
+            "edge": edge,
+            "delta_e": de,
+            "lpips": lpips_val,
+            "dists": dists_val,
+            "gmsd": gmsd_val,
+            "curve_fraction": path_analysis['curve_fraction'],
+            "total_segments": path_analysis['total'],
+            "file_size": os.path.getsize(output_path)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ============================================================================
 # CLI
 # ============================================================================

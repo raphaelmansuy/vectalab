@@ -16,6 +16,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 from rich.text import Text
 from rich import box
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, Annotated
 
 # Import icon processing
 try:
@@ -23,6 +25,16 @@ try:
     ICON_MODULE_AVAILABLE = True
 except ImportError:
     ICON_MODULE_AVAILABLE = False
+
+from vectalab.quality import calculate_full_metrics
+
+@dataclass
+class VectorizationResult:
+    input_path: Path
+    output_path: Path
+    method: str
+    metrics: Dict[str, Any]
+    error: Optional[str] = None
 
 # Initialize Typer app and Rich console
 app = typer.Typer(
@@ -252,7 +264,7 @@ def convert(
       $ vectalab convert photo.jpg output.svg
       
       [dim]# Fast conversion for previews[/]
-      $ vectalab convert image.png -q fast
+      $ vectalab convert image.png -q figma
       
       [dim]# Maximum quality with custom target[/]
       $ vectalab convert icon.png -m hifi -t 0.999
@@ -348,9 +360,14 @@ def _run_auto_conversion(
         if success:
             if not quiet:
                 # Calculate and show full metrics
-                metrics = _calculate_full_metrics(input_path, output_path)
-                metrics['method'] = 'Geometric Icon'
-                _show_auto_results(output_path, metrics)
+                metrics = calculate_full_metrics(str(input_path), str(output_path))
+                result = VectorizationResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    method='Geometric Icon',
+                    metrics=metrics
+                )
+                display_session_summary(result)
             return
         else:
             if not quiet:
@@ -369,7 +386,7 @@ def _run_auto_conversion(
                 vectorize_logo_premium(str(input_path), str(output_path), verbose=verbose)
             
             # FEEDBACK LOOP: Check LPIPS
-            metrics = _calculate_full_metrics(input_path, output_path)
+            metrics = calculate_full_metrics(str(input_path), str(output_path))
             lpips_val = metrics.get('lpips')
             
             # If LPIPS is high (> 0.15), it might be a complex illustration misclassified as a logo
@@ -383,13 +400,23 @@ def _run_auto_conversion(
                     vectorize_premium(str(input_path), str(output_path), verbose=verbose)
                 
                 # Recalculate metrics for new result
-                metrics = _calculate_full_metrics(input_path, output_path)
-                metrics['method'] = 'Premium (Auto-Retry)'
+                metrics = calculate_full_metrics(str(input_path), str(output_path))
+                result = VectorizationResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    method='Premium (Auto-Retry)',
+                    metrics=metrics
+                )
             else:
-                metrics['method'] = 'Logo Premium'
+                result = VectorizationResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    method='Logo Premium',
+                    metrics=metrics
+                )
 
             if not quiet:
-                _show_auto_results(output_path, metrics)
+                display_session_summary(result)
             return
             
         elif effective_mode == "premium":
@@ -400,9 +427,14 @@ def _run_auto_conversion(
             with console.status("[cyan]Vectorizing...[/]"):
                 vectorize_premium(str(input_path), str(output_path), verbose=verbose)
             if not quiet:
-                metrics = _calculate_full_metrics(input_path, output_path)
-                metrics['method'] = 'Premium'
-                _show_auto_results(output_path, metrics)
+                metrics = calculate_full_metrics(str(input_path), str(output_path))
+                result = VectorizationResult(
+                    input_path=input_path,
+                    output_path=output_path,
+                    method='Premium',
+                    metrics=metrics
+                )
+                display_session_summary(result)
             return
 
     except ImportError:
@@ -420,88 +452,18 @@ def _run_auto_conversion(
     )
 
 
-def _calculate_full_metrics(input_path: Path, output_path: Path) -> dict:
-    """Calculate comprehensive metrics for the conversion."""
-    try:
-        from vectalab.quality import (
-            calculate_topology_score, 
-            calculate_edge_accuracy, 
-            calculate_color_error, 
-            analyze_path_types,
-            render_svg_to_array
-        )
-        try:
-            from vectalab.perceptual import calculate_lpips, calculate_dists, calculate_gmsd
-            LPIPS_AVAILABLE = True
-        except ImportError:
-            LPIPS_AVAILABLE = False
-            
-        from skimage.metrics import structural_similarity as ssim
-        import cv2
-        import numpy as np
-        from PIL import Image
-        
-        # Load input
-        img_ref = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
-        if img_ref is None: return {}
-        
-        # Handle alpha
-        has_alpha = False
-        if img_ref.ndim == 3 and img_ref.shape[2] == 4:
-            has_alpha = True
-            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGRA2RGBA)
-        elif img_ref.ndim == 3 and img_ref.shape[2] == 3:
-            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
-        else:
-            img_ref = cv2.cvtColor(img_ref, cv2.COLOR_GRAY2RGB)
-        
-        # Render output SVG
-        h, w = img_ref.shape[:2]
-        with open(output_path, 'r') as f:
-            svg_content = f.read()
-            
-        if has_alpha:
-            img_out = render_svg_to_array(svg_content, w, h, mode='RGBA')
-        else:
-            img_out = render_svg_to_array(svg_content, w, h, mode='RGB')
-        
-        # Calculate metrics
-        s = ssim(img_ref, img_out, channel_axis=2, data_range=255) * 100
-        topo = calculate_topology_score(img_ref, img_out)
-        edge = calculate_edge_accuracy(img_ref, img_out)
-        de = calculate_color_error(img_ref, img_out)
-        path_analysis = analyze_path_types(str(output_path))
-        
-        lpips_val = None
-        dists_val = None
-        gmsd_val = None
-        
-        if LPIPS_AVAILABLE:
-            # Convert to PIL for LPIPS
-            pil_ref = Image.fromarray(img_ref)
-            pil_out = Image.fromarray(img_out)
-            lpips_val = calculate_lpips(pil_ref, pil_out)
-            dists_val = calculate_dists(pil_ref, pil_out)
-            gmsd_val = calculate_gmsd(pil_ref, pil_out)
-        
-        return {
-            "ssim": s,
-            "topology": topo,
-            "edge": edge,
-            "delta_e": de,
-            "lpips": lpips_val,
-            "dists": dists_val,
-            "gmsd": gmsd_val,
-            "curve_fraction": path_analysis['curve_fraction'],
-            "total_segments": path_analysis['total'],
-            "file_size": output_path.stat().st_size
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 
-def _show_auto_results(output_path: Path, metrics: dict):
-    """Display auto conversion results with full metrics."""
+
+def display_session_summary(result: VectorizationResult):
+    """Display conversion results with full metrics."""
+    metrics = result.metrics
+    output_path = result.output_path
+    
+    if result.error:
+        console.print(f"[bold red]❌ Error:[/ {result.error}")
+        return
+
     size_bytes = metrics.get('file_size', output_path.stat().st_size)
     
     if size_bytes < 1024:
@@ -518,8 +480,7 @@ def _show_auto_results(output_path: Path, metrics: dict):
     result_table.add_column("Meaning", style="dim")
     
     # Method
-    method = metrics.get('method', 'Auto')
-    result_table.add_row("Strategy", method, "Selected vectorization strategy")
+    result_table.add_row("Strategy", result.method, "Selected vectorization strategy")
     
     # SSIM
     ssim_val = metrics.get('ssim', 0)
@@ -566,7 +527,7 @@ def _show_auto_results(output_path: Path, metrics: dict):
     
     result_table.add_row("Output", str(output_path), "Path to generated file")
     
-    title = "🚀 Auto Vectorization Complete"
+    title = "🚀 Vectorization Complete"
     border_style = "green"
     
     console.print()
@@ -608,8 +569,15 @@ def _run_hifi_conversion(
             
             progress.update(task, completed=100, total=100)
         
-        # Show results
-        _show_optimized_results(output_path, stats, preset)
+        # Calculate and show full metrics
+        metrics = calculate_full_metrics(str(input_path), str(output_path))
+        result = VectorizationResult(
+            input_path=input_path,
+            output_path=output_path,
+            method=f'HiFi ({preset})',
+            metrics=metrics
+        )
+        display_session_summary(result)
     else:
         svg_path, stats = vectorize_high_fidelity(
             str(input_path),
@@ -656,84 +624,21 @@ def _run_standard_conversion(
             vm.vectorize(str(input_path), str(output_path))
             progress.update(task, completed=4)
         
-        console.print(f"\n✅ [bold green]Success![/] Output saved to [cyan]{output_path}[/]")
+        # Calculate and show full metrics
+        metrics = calculate_full_metrics(str(input_path), str(output_path))
+        result = VectorizationResult(
+            input_path=input_path,
+            output_path=output_path,
+            method=f'Standard ({method.value})',
+            metrics=metrics
+        )
+        display_session_summary(result)
     else:
         vm = Vectalab(method=method.value, device=resolved_device, use_modal=use_modal)
         vm.vectorize(str(input_path), str(output_path))
 
 
-def _show_results(output_path: Path, achieved_ssim: float, target_ssim: float):
-    """Display conversion results in a nice panel."""
-    # Get file size
-    size_bytes = output_path.stat().st_size
-    if size_bytes < 1024:
-        size_str = f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        size_str = f"{size_bytes / 1024:.1f} KB"
-    else:
-        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
-    
-    # Create results table
-    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
-    result_table.add_column("Metric", style="bold")
-    result_table.add_column("Value")
-    
-    ssim_text = format_ssim(achieved_ssim)
-    result_table.add_row("SSIM Achieved", ssim_text)
-    result_table.add_row("Target SSIM", f"{target_ssim * 100:.1f}%")
-    result_table.add_row("File Size", size_str)
-    result_table.add_row("Output", str(output_path))
-    
-    if achieved_ssim >= target_ssim:
-        title = "✨ Conversion Complete"
-        border_style = "green"
-    else:
-        title = "⚠️ Conversion Complete (below target)"
-        border_style = "yellow"
-    
-    console.print()
-    console.print(Panel(result_table, title=title, border_style=border_style))
 
-
-def _show_optimized_results(output_path: Path, stats: dict, preset: str):
-    """Display optimized conversion results in a nice panel."""
-    # Get file size
-    size_bytes = output_path.stat().st_size
-    if size_bytes < 1024:
-        size_str = f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        size_str = f"{size_bytes / 1024:.1f} KB"
-    else:
-        size_str = f"{size_bytes / (1024 * 1024):.2f} MB"
-    
-    # Create results table
-    result_table = Table(box=box.ROUNDED, show_header=False, border_style="green")
-    result_table.add_column("Metric", style="bold")
-    result_table.add_column("Value")
-    
-    result_table.add_row("Preset", preset.upper())
-    result_table.add_row("File Size", size_str)
-    
-    # Show optimization stats if available
-    if 'reduction_percent' in stats:
-        reduction = stats['reduction_percent']
-        if reduction > 0:
-            result_table.add_row("Size Reduction", f"[green]{reduction:.1f}%[/]")
-    
-    if 'original_paths' in stats and 'optimized_paths' in stats:
-        result_table.add_row(
-            "Paths", 
-            f"{stats['original_paths']} → {stats['optimized_paths']} "
-            f"([green]-{stats['original_paths'] - stats['optimized_paths']}[/])"
-        )
-    
-    result_table.add_row("Output", str(output_path))
-    
-    title = "✨ Optimized SVG Created"
-    border_style = "green"
-    
-    console.print()
-    console.print(Panel(result_table, title=title, border_style=border_style))
 
 
 @app.command("info", rich_help_panel="Commands")
@@ -1502,7 +1407,7 @@ def premium(
     target_ssim: Annotated[
         float,
         typer.Option(
-            "--quality", "-q",
+            "--target-ssim", "-t",
             help="Target SSIM quality (0.90-1.0)",
             min=0.90,
             max=1.0,

@@ -193,7 +193,7 @@ def process_image(args):
             
     elif effective_mode == "premium":
         # Use premium photo mode
-        cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
+        cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--target-ssim", "0.95"]
         start_time = time.time()
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
         duration = time.time() - start_time
@@ -266,7 +266,7 @@ def process_image(args):
             effective_mode = "premium (retry)"
             
             # Run Premium
-            cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--quality", "0.95"]
+            cmd = ["vectalab", "premium", str(input_png), str(output_svg), "--mode", "photo", "--target-ssim", "0.95"]
             start_time = time.time()
             subprocess.run(cmd, check=True, capture_output=True, timeout=120)
             duration += (time.time() - start_time)
