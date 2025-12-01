@@ -169,3 +169,84 @@ MIT License - see [LICENSE](LICENSE)
 
 - [vtracer](https://github.com/visioncortex/vtracer) - Rust vectorization
 - [SVGO](https://github.com/svg/svgo) - SVG optimization
+
+## Publishing / Releases 🔧
+
+We include a tiny helper script to build and upload releases to PyPI or TestPyPI: `scripts/publish_to_pypi.py`.
+
+Quick usage:
+
+```bash
+# Install the tools used by the script
+python -m pip install --upgrade build twine
+
+# Dry-run to TestPyPI (default is testpypi)
+python scripts/publish_to_pypi.py --dry-run
+
+# Upload to TestPyPI (use env TWINE_USERNAME/TWINE_PASSWORD or ~/.pypirc)
+python scripts/publish_to_pypi.py --repository testpypi
+
+# Upload to production PyPI
+python scripts/publish_to_pypi.py --repository pypi
+
+# Build, upload to PyPI and tag the current version (reads pyproject.toml)
+python scripts/publish_to_pypi.py --repository pypi --tag
+
+# If you want to inspect only the build artifacts and skip upload
+python scripts/publish_to_pypi.py --no-upload
+```
+
+Notes & recommendations:
+- The script expects build artifacts in `dist/` and will run `python -m build` by default.
+- Use `--dry-run` to preview commands to be executed before actually uploading.
+- For CI, set `TWINE_USERNAME` and `TWINE_PASSWORD` as environment secrets, or configure `~/.pypirc` so `twine` can use that.
+- The script supports both TestPyPI (`--repository testpypi`) and production PyPI (`--repository pypi`).
+- You can also target a custom PyPI-compatible endpoint using `--repository-url` (e.g. a private index or an internal upload endpoint). This overrides `--repository`.
+
+CI publishing (recommended)
+--------------------------
+
+To safely publish to PyPI on releases, add a GitHub Actions secret named `PYPI_API_TOKEN` containing a PyPI API token (create one at https://pypi.org/manage/account/token/). A workflow is included that will run on push tags named like `v*` and publish built distributions automatically.
+
+Typical workflow:
+
+1. Create a PyPI API token (project or account token) on https://pypi.org/account/.
+2. Add the token to your repository under Settings → Secrets → Actions → `PYPI_API_TOKEN`.
+3. Push a git tag (example: `git tag v0.1.0 && git push origin v0.1.0`). The CI workflow will build & publish.
+
+Repository protections
+---------------------
+
+This repository now has a conservative branch protection policy applied to `main` to reduce accidental direct pushes and require code review for changes. The policy applied includes:
+
+- Require at least 1 approving PR review.
+- Disallow force-pushes and branch deletions on `main`.
+- Do not enforce admin exemptions (admins are not required to follow the rules in this conservative setup).
+- No required CI contexts (you can add these later once GitHub Actions workflows exist).
+
+If you prefer to manage branch protection manually, these are the gh commands used (run locally as a repository admin):
+
+```bash
+# Example: conservative (require 1 review, strict status checks w/ no contexts, disallow force pushes)
+cat > /tmp/prot.json <<'JSON'
+{
+      "required_status_checks": { "strict": true, "contexts": [] },
+      "enforce_admins": false,
+      "required_pull_request_reviews": {
+            "dismiss_stale_reviews": true,
+            "require_code_owner_reviews": false,
+            "required_approving_review_count": 1
+      },
+      "restrictions": null,
+      "allow_force_pushes": false,
+      "allow_deletions": false
+}
+JSON
+
+gh api --method PUT /repos/<ORG_OR_USER>/<REPO>/branches/main/protection --input /tmp/prot.json | cat
+```
+
+If you'd like stricter rules (enforce admin rules, require CI contexts, or restrict push access to certain teams), I can update the policy accordingly — tell me what you want and I'll apply it.
+
+
+
