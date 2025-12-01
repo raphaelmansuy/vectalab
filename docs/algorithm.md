@@ -2,8 +2,6 @@
 
 This short page explains the main Vectalab pipeline in practical terms: how inputs flow through analysis, vectorization, and optimizations — and where to intervene when integrating or tuning.
 
-![pipeline](assets/pipeline.svg)
-
 Core stages (one line each):
 
 - Input analysis — classify image as logo, photo, artwork; measure color count, edge density, and size.
