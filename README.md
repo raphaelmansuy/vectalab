@@ -2,17 +2,18 @@
 
 > **Professional High-Fidelity Image Vectorization**
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10-3.12](https://img.shields.io/badge/python-3.10--3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Convert raster images (PNG, JPG) to optimized SVG with **97%+ quality** and **70-80% file size reduction**.
+Convert raster images (PNG, JPG) to optimized SVG with **97%+ quality** and **70–80% file size reduction**.
 
 ## Installation
 
 ```bash
 pip install vectalab
 
-# Optional: Install SVGO for best compression
+# Optional: install SVGO (Node.js) for best compression
+# recommended: Node 16+ or current LTS
 npm install -g svgo
 ```
 
@@ -140,16 +141,24 @@ PNG/JPG → Analysis → Preprocessing → vtracer → SVGO → SVG
 
 ## Requirements
 
-- Python 3.10+
-- Node.js (for SVGO, optional but recommended)
+- Python 3.10–3.12 (see pyproject.toml; the package requires >=3.10)
+- Node.js (for SVGO, optional but recommended; use an LTS release)
 
 ### Core Dependencies
 
 ```text
-vtracer      # Rust vectorization engine
-opencv       # Image processing
-scikit-image # Quality metrics
-cairosvg     # SVG rendering
+vtracer      # Rust vectorization engine (primary tracing backend)
+opencv-python # Image processing
+scikit-image # Quality & image metrics
+cairosvg     # SVG rendering (used in tests and helpers)
+```
+
+Optional/advanced features (SAM segmentation, Modal cloud acceleration):
+
+```text
+segment-anything  # SAM-based segmentation (optional)
+modal             # cloud acceleration (optional — see docs/modal_setup.md)
+torch/torchvision # hardware-accelerated segmentation models
 ```
 
 ## License
